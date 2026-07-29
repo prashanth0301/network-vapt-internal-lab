@@ -1,0 +1,471 @@
+import re
+import uuid
+from typing import Optional
+
+from loguru import logger
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+from app.core.database import async_session_factory
+from app.models.host import Host
+from app.models.port import Port
+from app.models.service import Service
+from app.services.assessment.lifecycle import StageStatus
+from app.services.assessment.progress_tracker import ProgressTracker
+
+SERVICE_NAME_MAP = {
+    "http": "HTTP",
+    "http-proxy": "HTTP",
+    "www": "HTTP",
+    "https": "HTTPS",
+    "microsoft-ds": "SMB",
+    "netbios-ssn": "SMB",
+    "ms-wbt-server": "RDP",
+    "rdp": "RDP",
+    "domain": "DNS",
+    "ssh": "SSH",
+    "mysql": "MySQL",
+    "postgresql": "PostgreSQL",
+    "pgsql": "PostgreSQL",
+    "ftp": "FTP",
+    "smtp": "SMTP",
+    "imap": "IMAP",
+    "pop3": "POP3",
+    "telnet": "Telnet",
+    "ldap": "LDAP",
+    "ldaps": "LDAPS",
+    "nfs": "NFS",
+    "nfsd": "NFS",
+    "mssql": "MSSQL",
+    "ms-sql-s": "MSSQL",
+    "ms-sql": "MSSQL",
+    "oracle-tns": "Oracle DB",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "memcached": "Memcached",
+    "snmp": "SNMP",
+    "ntp": "NTP",
+    "dhcp": "DHCP",
+    "dhcpv6": "DHCP",
+    "tftp": "TFTP",
+    "rsync": "Rsync",
+    "vnc": "VNC",
+    "x11": "X11",
+    "sip": "SIP",
+    "rpc": "RPC",
+    "dcom": "DCOM",
+    "winrm": "WinRM",
+    "kerberos": "Kerberos",
+    "kpasswd": "Kerberos",
+    "svn": "SVN",
+    "git": "Git",
+    "mqtt": "MQTT",
+    "amqp": "AMQP",
+    "stomp": "STOMP",
+    "cassandra": "Cassandra",
+    "elasticsearch": "Elasticsearch",
+    "kafka": "Kafka",
+    "zookeeper": "ZooKeeper",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "etcd": "etcd",
+    "consul": "Consul",
+    "vault": "Vault",
+    "ntp": "NTP",
+    "ipp": "IPP",
+    "syslog": "Syslog",
+    "radius": "RADIUS",
+    "wsman": "WS-Management",
+}
+
+PRODUCT_MAP = {
+    "apache httpd": "Apache HTTP Server",
+    "apache": "Apache HTTP Server",
+    "apache tomcat": "Apache Tomcat",
+    "tomcat": "Apache Tomcat",
+    "nginx": "NGINX",
+    "iis": "Microsoft IIS",
+    "microsoft iis": "Microsoft IIS",
+    "openssh": "OpenSSH",
+    "mysql": "MySQL Server",
+    "mariadb": "MariaDB Server",
+    "postgresql": "PostgreSQL Server",
+    "postgres": "PostgreSQL Server",
+    "samba": "Samba",
+    "smbd": "Samba",
+    "vsftpd": "vsFTPd",
+    "proftpd": "ProFTPD",
+    "pure-ftpd": "Pure-FTPd",
+    "nginx": "NGINX",
+    "lighttpd": "Lighttpd",
+    "node.js": "Node.js",
+    "express": "Express.js",
+    "django": "Django",
+    "flask": "Flask",
+    "ruby": "Ruby",
+    "unicorn": "Unicorn",
+    "gunicorn": "Gunicorn",
+    "jetty": "Eclipse Jetty",
+    "jboss": "JBoss",
+    "wildfly": "WildFly",
+    "glassfish": "Oracle GlassFish",
+    "weblogic": "Oracle WebLogic",
+}
+
+CATEGORY_MAP = {
+    "HTTP": "Web Server",
+    "HTTPS": "Web Server",
+    "SSH": "Remote Access",
+    "Telnet": "Remote Access",
+    "RDP": "Remote Access",
+    "VNC": "Remote Access",
+    "X11": "Remote Access",
+    "WinRM": "Remote Access",
+    "WS-Management": "Network Management",
+    "MySQL": "Database",
+    "PostgreSQL": "Database",
+    "MSSQL": "Database",
+    "Oracle DB": "Database",
+    "MongoDB": "Database",
+    "Cassandra": "Database",
+    "Redis": "Database",
+    "Memcached": "Caching",
+    "Elasticsearch": "Database",
+    "SMTP": "Mail",
+    "POP3": "Mail",
+    "IMAP": "Mail",
+    "DNS": "DNS",
+    "DHCP": "DNS",
+    "FTP": "File Sharing",
+    "SMB": "File Sharing",
+    "NFS": "File Sharing",
+    "TFTP": "File Sharing",
+    "Rsync": "File Sharing",
+    "LDAP": "Directory Services",
+    "LDAPS": "Directory Services",
+    "Kerberos": "Directory Services",
+    "SNMP": "Network Management",
+    "NTP": "Network Management",
+    "RADIUS": "Network Management",
+    "Syslog": "Network Management",
+    "RPC": "Remote Access",
+    "IPP": "Print Services",
+    "SIP": "VoIP",
+    "MQTT": "IoT",
+    "AMQP": "Messaging",
+    "STOMP": "Messaging",
+    "Kafka": "Messaging",
+    "ZooKeeper": "Coordination",
+    "etcd": "Coordination",
+    "Consul": "Coordination",
+    "Vault": "Security",
+    "DCOM": "Remote Access",
+    "Git": "Version Control",
+    "SVN": "Version Control",
+    "Docker": "Container",
+    "Kubernetes": "Orchestration",
+}
+
+
+def normalize_service_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    cleaned = name.strip().lower()
+    return SERVICE_NAME_MAP.get(cleaned, name.strip())
+
+
+def normalize_product(product: Optional[str]) -> Optional[str]:
+    if not product:
+        return None
+    cleaned = product.strip().lower()
+    return PRODUCT_MAP.get(cleaned, product.strip())
+
+
+def extract_normalized_version(version_str: Optional[str]) -> Optional[str]:
+    if not version_str:
+        return None
+    version_str = version_str.strip()
+    match = re.search(r"(\d[\d\.]*[\da-zA-Z]*(?:[-_][a-zA-Z]*\d+)*)", version_str)
+    if match:
+        return match.group(1)
+    return version_str
+
+
+def extract_os_from_version(version_str: Optional[str]) -> Optional[str]:
+    if not version_str:
+        return None
+    os_patterns = [
+        r"(Ubuntu|Debian|CentOS|Red Hat|Fedora|Alpine|Arch|SUSE|FreeBSD|OpenBSD|NetBSD|Windows|macOS|Darwin|Solaris)",
+    ]
+    for pattern in os_patterns:
+        match = re.search(pattern, version_str, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def categorize_service(normalized_name: Optional[str]) -> Optional[str]:
+    if not normalized_name:
+        return None
+    return CATEGORY_MAP.get(normalized_name, "Other")
+
+
+def calculate_confidence(
+    normalized_name: Optional[str],
+    normalized_product: Optional[str],
+    version: Optional[str],
+) -> int:
+    if normalized_name and normalized_product and version:
+        return 98
+    if normalized_name and normalized_product:
+        return 92
+    if normalized_name:
+        return 85
+    if normalized_product:
+        return 70
+    if version:
+        return 60
+    return 30
+
+
+def generate_notes(
+    original_name: Optional[str],
+    original_product: Optional[str],
+    original_version: Optional[str],
+    normalized_name: Optional[str],
+    normalized_product: Optional[str],
+    os_from_version: Optional[str],
+) -> Optional[str]:
+    notes_parts = []
+    if original_name and normalized_name and original_name != normalized_name:
+        notes_parts.append(f"Normalized from '{original_name}' to '{normalized_name}'")
+    if original_product and normalized_product and original_product != normalized_product:
+        notes_parts.append(f"Product normalized from '{original_product}' to '{normalized_product}'")
+    if os_from_version and original_version:
+        notes_parts.append(f"OS detected from version string: {os_from_version}")
+    if not notes_parts:
+        return None
+    return "; ".join(notes_parts)
+
+
+def enrich_service(service: Service) -> Service:
+    normalized_name = normalize_service_name(service.name)
+    normalized_product = normalize_product(service.product)
+    normalized_version = extract_normalized_version(service.version)
+    category = categorize_service(normalized_name)
+    confidence = calculate_confidence(normalized_name, normalized_product, service.version)
+    os_from_version = extract_os_from_version(service.version)
+    notes = generate_notes(
+        original_name=service.name,
+        original_product=service.product,
+        original_version=service.version,
+        normalized_name=normalized_name,
+        normalized_product=normalized_product,
+        os_from_version=os_from_version,
+    )
+
+    service.normalized_name = normalized_name
+    service.normalized_product = normalized_product
+    service.normalized_version = normalized_version
+    service.category = category
+    service.confidence = confidence
+    service.notes = notes
+
+    return service
+
+
+async def service_intelligence_handler(
+    assessment_id: str,
+    target: str,
+    parameters: Optional[dict] = None,
+    tracker: Optional[ProgressTracker] = None,
+) -> dict:
+    logger.info(
+        "Service intelligence handler invoked: assessment={id}, target={target}",
+        id=assessment_id,
+        target=target,
+    )
+
+    if tracker:
+        tracker.update_stage_status("service_intelligence", StageStatus.RUNNING)
+        tracker.update_stage_progress("service_intelligence", 5.0)
+
+    if tracker:
+        tracker.update_stage_progress("service_intelligence", 10.0)
+
+    async with async_session_factory() as session:
+        services_result = await session.execute(
+            select(Service)
+            .join(Port, Service.port_id == Port.id)
+            .join(Host, Port.host_id == Host.id)
+            .where(Host.scan_id == uuid.UUID(assessment_id))
+        )
+        services = list(services_result.scalars().all())
+
+    if not services:
+        logger.warning("No services found for assessment {id}", id=assessment_id)
+        if tracker:
+            tracker.update_stage_progress("service_intelligence", 100.0)
+            tracker.update_stage_status("service_intelligence", StageStatus.COMPLETED)
+        return {"success": True, "summary": {"total_services": 0, "total_enriched": 0}}
+
+    total = len(services)
+    enriched_count = 0
+    categories_found = {}
+    confidence_distribution = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
+
+    progress_per_service = 80.0 / total if total > 0 else 0
+
+    async with async_session_factory() as session:
+        for idx, service in enumerate(services):
+            try:
+                enrich_service(service)
+                session.add(service)
+                enriched_count += 1
+
+                if service.category:
+                    categories_found[service.category] = categories_found.get(service.category, 0) + 1
+
+                if service.confidence is not None:
+                    if service.confidence >= 90:
+                        confidence_distribution["high"] += 1
+                    elif service.confidence >= 70:
+                        confidence_distribution["medium"] += 1
+                    elif service.confidence >= 50:
+                        confidence_distribution["low"] += 1
+                    else:
+                        confidence_distribution["unknown"] += 1
+
+                if tracker:
+                    progress = 15.0 + ((idx + 1) * progress_per_service)
+                    tracker.update_stage_progress("service_intelligence", min(progress, 95.0))
+
+            except Exception as e:
+                logger.error("Failed to enrich service {id}: {error}", id=service.id, error=str(e))
+                continue
+
+        await session.commit()
+
+    if tracker:
+        tracker.update_stage_progress("service_intelligence", 100.0)
+        tracker.update_stage_status("service_intelligence", StageStatus.COMPLETED)
+
+    summary = {
+        "total_services": total,
+        "total_enriched": enriched_count,
+        "categories": categories_found,
+        "confidence_distribution": confidence_distribution,
+    }
+
+    logger.info(
+        "Service intelligence completed: {enriched}/{total} services enriched",
+        enriched=enriched_count,
+        total=total,
+    )
+
+    return {"success": True, "summary": summary}
+
+
+async def get_services_by_host(
+    session: AsyncSession,
+    host_id: str,
+) -> list[Service]:
+    result = await session.execute(
+        select(Service)
+        .join(Port)
+        .where(Port.host_id == uuid.UUID(host_id))
+        .options(joinedload(Service.port))
+        .order_by(Service.name)
+    )
+    return list(result.scalars().all())
+
+
+async def get_services_by_assessment(
+    session: AsyncSession,
+    assessment_id: str,
+) -> list[Service]:
+    result = await session.execute(
+        select(Service)
+        .join(Port, Service.port_id == Port.id)
+        .join(Host, Port.host_id == Host.id)
+        .where(Host.scan_id == uuid.UUID(assessment_id))
+        .options(joinedload(Service.port).joinedload(Port.host))
+        .order_by(Service.name)
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_services(
+    session: AsyncSession,
+    page: int = 1,
+    per_page: int = 20,
+    category: Optional[str] = None,
+    confidence_min: Optional[int] = None,
+    search: Optional[str] = None,
+    sort_by: str = "name",
+    sort_order: str = "asc",
+) -> tuple[list[Service], int]:
+    query = select(Service).options(joinedload(Service.port).joinedload(Port.host))
+
+    if category:
+        query = query.where(Service.category == category)
+    if confidence_min is not None:
+        query = query.where(Service.confidence >= confidence_min)
+    if search:
+        query = query.where(
+            Service.name.ilike(f"%{search}%")
+            | Service.product.ilike(f"%{search}%")
+            | Service.normalized_name.ilike(f"%{search}%")
+            | Service.normalized_product.ilike(f"%{search}%")
+            | Service.version.ilike(f"%{search}%")
+        )
+
+    count_query = select(Service.id).select_from(Service)
+    if category:
+        count_query = count_query.where(Service.category == category)
+    if confidence_min is not None:
+        count_query = count_query.where(Service.confidence >= confidence_min)
+    if search:
+        count_query = count_query.where(
+            Service.name.ilike(f"%{search}%")
+            | Service.product.ilike(f"%{search}%")
+            | Service.normalized_name.ilike(f"%{search}%")
+            | Service.normalized_product.ilike(f"%{search}%")
+            | Service.version.ilike(f"%{search}%")
+        )
+
+    total_result = await session.execute(count_query)
+    total = len(total_result.fetchall())
+
+    sort_column = getattr(Service, sort_by, Service.name)
+    if sort_order == "desc":
+        sort_column = sort_column.desc()
+    query = query.order_by(sort_column).offset((page - 1) * per_page).limit(per_page)
+
+    result = await session.execute(query)
+    services = list(result.scalars().all())
+
+    return services, total
+
+
+async def get_service_by_id(
+    session: AsyncSession,
+    service_id: str,
+) -> Optional[Service]:
+    result = await session.execute(
+        select(Service)
+        .where(Service.id == uuid.UUID(service_id))
+        .options(joinedload(Service.port).joinedload(Port.host))
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all_categories(
+    session: AsyncSession,
+) -> list[str]:
+    result = await session.execute(
+        select(Service.category).where(Service.category.isnot(None)).distinct().order_by(Service.category)
+    )
+    return [row[0] for row in result.fetchall()]
