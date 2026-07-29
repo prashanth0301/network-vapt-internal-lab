@@ -1,0 +1,15 @@
+# Network VAPT Platform - Optional Security Tool Integrations
+# Install with: pip install -r requirements-security.txt
+# Requires: requirements.txt must be installed first
+#
+# These packages enable real tool integrations (Nmap, OpenVAS, PDF reports).
+# The platform uses mock providers when these are not installed.
+
+# Network Scanning
+python-nmap>=0.7.1
+
+# Vulnerability Scanning (OpenVAS/GVM)
+python-gvm>=24.5.0
+
+# PDF Report Generation (requires GTK+ on Windows)
+weasyprint>=61.2

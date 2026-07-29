@@ -43,6 +43,11 @@ class Settings(BaseSettings):
             f"@{values['POSTGRES_HOST']}:{values['POSTGRES_PORT']}/{values['POSTGRES_DB']}"
         )
 
+    JWT_SECRET: str = "vapt-platform-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_MINUTES: int = 30
+    JWT_REFRESH_EXPIRATION_DAYS: int = 7
+
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["*"]

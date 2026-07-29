@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   '/exploitation': 'Exploitation',
   '/packets': 'Packet Analysis',
   '/reports': 'Reports',
+  '/users': 'User Management',
   '/settings': 'Settings',
 };
 
@@ -35,6 +36,7 @@ const breadcrumbMap: Record<string, { label: string; path?: string }[]> = {
   '/exploitation': [{ label: 'Exploitation', path: '/exploitation' }],
   '/packets': [{ label: 'Packet Analysis', path: '/packets' }],
   '/reports': [{ label: 'Reports', path: '/reports' }],
+  '/users': [{ label: 'User Management', path: '/users' }],
   '/settings': [{ label: 'Settings', path: '/settings' }],
 };
 

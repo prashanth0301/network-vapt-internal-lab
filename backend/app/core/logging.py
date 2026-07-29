@@ -1,28 +1,26 @@
 import json
 import logging
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
 
 from loguru import logger
 
 from app.core.config import settings
 
 
-class JsonFormatter:
-    def format(self, record: Dict[str, Any]) -> str:
-        log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record["level"].name,
-            "module": record["name"],
-            "function": record["function"],
-            "line": record["line"],
-            "message": record["message"],
-        }
-        if record.get("exception"):
-            log_entry["exception"] = record["exception"]
-        return json.dumps(log_entry)
+def json_sink(message):
+    record = message.record
+    log_entry = {
+        "timestamp": record["time"].isoformat(),
+        "level": record["level"].name,
+        "module": record["name"],
+        "function": record["function"],
+        "line": record["line"],
+        "message": record["message"],
+    }
+    if record["exception"]:
+        log_entry["exception"] = str(record["exception"])
+    sys.stdout.write(json.dumps(log_entry) + "\n")
 
 
 class InterceptHandler(logging.Handler):
@@ -43,11 +41,9 @@ def setup_logging() -> None:
     log_format = settings.LOG_FORMAT
 
     if log_format == "json":
-        formatter = JsonFormatter()
         logger.add(
-            sys.stdout,
+            json_sink,
             level=log_level,
-            format=lambda record: formatter.format(record),
             colorize=False,
         )
     else:

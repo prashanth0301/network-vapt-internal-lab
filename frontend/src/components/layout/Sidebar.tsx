@@ -1,5 +1,7 @@
+import { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 
+import { AuthContext } from '../../context/AuthContext';
 import { classNames } from '../../utils/helpers';
 
 const navItems = [
@@ -15,6 +17,10 @@ const navItems = [
   { label: 'Exploitation', path: '/exploitation', icon: '⚔' },
   { label: 'Packet Analysis', path: '/packets', icon: '📦' },
   { label: 'Reports', path: '/reports', icon: '📊' },
+];
+
+const adminItems = [
+  { label: 'User Management', path: '/users', icon: '👥' },
   { label: 'Settings', path: '/settings', icon: '⚙' },
 ];
 
@@ -24,6 +30,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const { user, logout } = useContext(AuthContext);
+  const isAdmin = user?.role === 'administrator';
+
   return (
     <aside
       className={classNames(
@@ -70,11 +79,52 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}
+
+        {isAdmin && <div className="border-t border-surface-200 dark:border-surface-700 my-2 pt-2">
+          <p className="px-3 py-1 text-xs font-medium text-surface-400 uppercase tracking-wider">
+            {!collapsed && 'Administration'}
+          </p>
+          {adminItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                classNames(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-900 dark:hover:text-surface-200',
+                  collapsed && 'justify-center px-2',
+                )
+              }
+              title={item.label}
+            >
+              <span className="text-lg">{item.icon}</span>
+              {!collapsed && <span>{item.label}</span>}
+            </NavLink>
+          ))}
+        </div>}
       </nav>
 
-      <div className="p-4 border-t border-surface-200 dark:border-surface-700">
+      <div className="p-3 border-t border-surface-200 dark:border-surface-700">
+        {!collapsed && user && (
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-xs font-semibold text-primary-600 dark:text-primary-400">
+              {user.username.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-surface-700 dark:text-surface-300 truncate">{user.full_name || user.username}</p>
+              <p className="text-[10px] text-surface-400 truncate">{user.role}</p>
+            </div>
+          </div>
+        )}
         {!collapsed && (
-          <p className="text-xs text-surface-400 text-center">v1.0.0</p>
+          <button onClick={logout} className="w-full text-xs text-surface-400 hover:text-critical text-center py-1">
+            Sign Out
+          </button>
+        )}
+        {!collapsed && (
+          <p className="text-[10px] text-surface-400 text-center mt-1">v1.0.0</p>
         )}
       </div>
     </aside>

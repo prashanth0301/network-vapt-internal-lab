@@ -19,31 +19,31 @@ export async function getServices(
   params.set('sort_order', sortOrder);
   params.set('page', String(page));
   params.set('per_page', String(perPage));
-  const response = await apiClient.get<PaginatedResponse<ServiceIntelligence>>(`/v1/services?${params}`);
+  const response = await apiClient.get<PaginatedResponse<ServiceIntelligence>>(`/services?${params}`);
   return response.data;
 }
 
 export async function getServiceById(id: string): Promise<ApiResponse<ServiceIntelligence>> {
-  const response = await apiClient.get<ApiResponse<ServiceIntelligence>>(`/v1/services/${id}`);
+  const response = await apiClient.get<ApiResponse<ServiceIntelligence>>(`/services/${id}`);
   return response.data;
 }
 
 export async function getServicesByHost(hostId: string): Promise<ApiResponse<ServiceIntelligence[]>> {
-  const response = await apiClient.get<ApiResponse<ServiceIntelligence[]>>(`/v1/services/by-host/${hostId}`);
+  const response = await apiClient.get<ApiResponse<ServiceIntelligence[]>>(`/services/by-host/${hostId}`);
   return response.data;
 }
 
 export async function getServicesByAssessment(assessmentId: string): Promise<ApiResponse<ServiceIntelligence[]>> {
-  const response = await apiClient.get<ApiResponse<ServiceIntelligence[]>>(`/v1/services/by-assessment/${assessmentId}`);
+  const response = await apiClient.get<ApiResponse<ServiceIntelligence[]>>(`/services/by-assessment/${assessmentId}`);
   return response.data;
 }
 
 export async function getCategories(): Promise<ApiResponse<string[]>> {
-  const response = await apiClient.get<ApiResponse<string[]>>('/v1/services/categories');
+  const response = await apiClient.get<ApiResponse<string[]>>('/services/categories');
   return response.data;
 }
 
 export async function enrichServices(request?: ServiceEnrichRequest): Promise<ApiResponse<{ services_enriched: number }>> {
-  const response = await apiClient.post<ApiResponse<{ services_enriched: number }>>('/v1/services/enrich', request || {});
+  const response = await apiClient.post<ApiResponse<{ services_enriched: number }>>('/services/enrich', request || {});
   return response.data;
 }

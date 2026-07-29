@@ -106,7 +106,9 @@ backend/
 ├── alembic.ini              # Alembic configuration
 ├── pyproject.toml           # Ruff, isort, black, pytest config
 ├── .pre-commit-config.yaml  # Pre-commit hooks
-└── requirements.txt         # Python dependencies
+├── requirements.txt         # Core Python dependencies
+├── requirements-dev.txt     # Development & testing dependencies
+└── requirements-security.txt# Optional security tool integrations
 ```
 
 ## Frontend Architecture
@@ -325,8 +327,14 @@ python -m venv .venv
 source .venv/bin/activate   # Linux/macOS
 .venv\Scripts\Activate.ps1  # Windows
 
-# Install dependencies
+# Install core dependencies
 pip install -r requirements.txt
+
+# (Optional) Install security tool integrations (nmap, OpenVAS, PDF reports)
+pip install -r requirements-security.txt
+
+# (Optional) Install dev/testing tools
+pip install -r requirements-dev.txt
 
 # Ensure PostgreSQL is running with database 'vapt_db'
 # Copy and edit .env
@@ -348,6 +356,60 @@ npm install
 npm run dev
 ```
 
+### First Login
+
+The platform does **not** create a default admin account automatically. After starting the backend, seed the first administrator:
+
+```bash
+cd backend
+python -m scripts.create_admin
+```
+
+Default credentials:
+| Field | Value |
+|-------|-------|
+| Username | `admin` |
+| Email | `admin@networkvapt.local` |
+| Password | `Admin@123` |
+| Role | `administrator` |
+
+Login at `http://localhost:5173` (frontend) or `http://localhost:8000/docs` (Swagger).
+
+### Creating Additional Users
+
+Once logged in as an administrator, create more users via the API:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/users \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "operator1",
+    "email": "operator1@networkvapt.local",
+    "password": "SecurePass@456",
+    "full_name": "Operator One",
+    "role": "viewer"
+  }'
+```
+
+Available roles:
+- **administrator** — full access (manage users, view audit logs, run assessments)
+- **viewer** — read-only access (view dashboards and reports)
+
+To get an admin token, login first:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "Admin@123"}'
+```
+
+The script is also idempotent — re-running it is safe:
+
+```bash
+python -m scripts.create_admin --username operator2 --password OtherPass@789
+```
+
 ### Docker Setup
 
 ```bash
@@ -360,8 +422,11 @@ docker-compose -f docker/docker-compose.yml up -d
 ### Testing
 
 ```bash
-# Backend tests
+# Install dev dependencies first
 cd backend
+pip install -r requirements-dev.txt
+
+# Run backend tests
 pytest tests/ -v --asyncio-mode=auto
 
 # Frontend build check

@@ -13,26 +13,26 @@ export async function getPorts(
   if (protocol) params.set('protocol', protocol);
   params.set('page', String(page));
   params.set('per_page', String(perPage));
-  const response = await apiClient.get<ApiResponse<Port[]>>(`/v1/ports?${params}`);
+  const response = await apiClient.get<ApiResponse<Port[]>>(`/ports?${params}`);
   return response.data;
 }
 
 export async function getPortById(id: string): Promise<ApiResponse<Port>> {
-  const response = await apiClient.get<ApiResponse<Port>>(`/v1/ports/${id}`);
+  const response = await apiClient.get<ApiResponse<Port>>(`/ports/${id}`);
   return response.data;
 }
 
 export async function getPortsByHost(hostId: string): Promise<ApiResponse<Port[]>> {
-  const response = await apiClient.get<ApiResponse<Port[]>>(`/v1/ports/by-host/${hostId}`);
+  const response = await apiClient.get<ApiResponse<Port[]>>(`/ports/by-host/${hostId}`);
   return response.data;
 }
 
 export async function getPortsByAssessment(assessmentId: string): Promise<ApiResponse<Port[]>> {
-  const response = await apiClient.get<ApiResponse<Port[]>>(`/v1/ports/by-assessment/${assessmentId}`);
+  const response = await apiClient.get<ApiResponse<Port[]>>(`/ports/by-assessment/${assessmentId}`);
   return response.data;
 }
 
 export async function startPortScan(request: PortScanRequest): Promise<ApiResponse<{ assessment_id: string }>> {
-  const response = await apiClient.post<ApiResponse<{ assessment_id: string }>>('/v1/ports/scan', request);
+  const response = await apiClient.post<ApiResponse<{ assessment_id: string }>>('/ports/scan', request);
   return response.data;
 }
