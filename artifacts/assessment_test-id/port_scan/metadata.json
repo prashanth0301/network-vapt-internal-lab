@@ -1,0 +1,12 @@
+{
+  "assessment_id": "test-id",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "ports": null,
+  "target": "192.168.56.0/24",
+  "parameters": {
+    "scan_type": "tcp_syn"
+  },
+  "start_time": "2026-07-29T11:43:08.106288+00:00"
+}

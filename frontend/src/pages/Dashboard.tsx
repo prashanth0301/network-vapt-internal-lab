@@ -7,17 +7,24 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Badge } from '../components/ui/Badge';
 import { checkHealth } from '../services/healthService';
 import { getHosts, getHostSummary } from '../services/hostService';
+import { getVulnerabilitySummary } from '../services/vulnerabilityService';
+import { getCVEStatistics, getHighRiskCVEs } from '../services/cveService';
+import { getExploitStatistics } from '../services/exploitService';
+import type { CVE, CVEStatistics } from '../types/cve';
+import type { ExploitStatistics } from '../types/exploit';
 import type { HealthResponse } from '../types/health';
 import type { Host } from '../types/host';
-import { getStatusColor } from '../utils/helpers';
+import type { VulnerabilitySummary } from '../types/vulnerability';
 
-const riskData = [
-  { name: 'Critical', value: 12, color: '#ef4444' },
-  { name: 'High', value: 28, color: '#f97316' },
-  { name: 'Medium', value: 45, color: '#eab308' },
-  { name: 'Low', value: 67, color: '#22c55e' },
-  { name: 'Info', value: 34, color: '#3b82f6' },
-];
+const COLORS: Record<string, string> = {
+  Critical: '#ef4444',
+  High: '#f97316',
+  Medium: '#eab308',
+  Low: '#22c55e',
+  Info: '#3b82f6',
+};
+
+const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 
 const recentScans = [
   { id: '1', name: 'Full Network Assessment', target: '192.168.56.0/24', status: 'completed', date: '2026-07-28T14:30:00' },
@@ -31,21 +38,46 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [hosts, setHosts] = useState<Host[]>([]);
   const [summary, setSummary] = useState<{ total_hosts: number; alive_hosts: number } | null>(null);
+  const [vulnSummary, setVulnSummary] = useState<VulnerabilitySummary | null>(null);
+  const [cveStats, setCveStats] = useState<CVEStatistics | null>(null);
+  const [highRiskCves, setHighRiskCves] = useState<CVE[]>([]);
+  const [exploitStats, setExploitStats] = useState<ExploitStatistics | null>(null);
 
   useEffect(() => {
     Promise.all([
       checkHealth(),
       getHosts(),
       getHostSummary(),
+      getVulnerabilitySummary(),
+      getCVEStatistics(),
+      getHighRiskCVEs(5),
+      getExploitStatistics(),
     ])
-      .then(([healthRes, hostsRes, summaryRes]) => {
+      .then(([healthRes, hostsRes, summaryRes, vulnRes, cveRes, highRiskRes, expRes]) => {
         setHealth(healthRes);
         setHosts(hostsRes.data);
         setSummary(summaryRes.data);
+        setVulnSummary(vulnRes.data);
+        setCveStats(cveRes.data);
+        setHighRiskCves(highRiskRes.data);
+        setExploitStats(expRes.data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const riskData = severityOrder.map((sev) => ({
+    name: sev,
+    value: vulnSummary?.severity_counts?.[sev] ?? 0,
+    color: COLORS[sev],
+  }));
+
+  const totalVulns = vulnSummary?.total_vulnerabilities ?? 0;
+  const vulnSubtitle = vulnSummary
+    ? severityOrder.filter((s) => (vulnSummary.severity_counts?.[s] ?? 0) > 0)
+        .map((s) => `${vulnSummary.severity_counts[s]} ${s}`)
+        .join(' · ')
+    : 'No data';
 
   if (loading) {
     return (
@@ -72,40 +104,92 @@ export function Dashboard() {
         />
         <StatCard
           title="Vulnerabilities"
-          value="93"
-          subtitle="12 Critical · 28 High"
+          value={String(totalVulns)}
+          subtitle={vulnSubtitle}
           trend={{ value: 8, positive: false }}
         />
         <StatCard
-          title="Exploits Available"
-          value="31"
-          subtitle="Metasploit modules"
-          trend={{ value: 5, positive: true }}
+          title="Open Findings"
+          value={String(vulnSummary?.open_count ?? 0)}
+          subtitle={`Avg CVSS: ${vulnSummary?.average_cvss ?? '—'}`}
+          trend={{ value: 0, positive: false }}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Risk Distribution" subtitle="Vulnerability severity breakdown">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total CVEs"
+          value={String(cveStats?.total_cves ?? 0)}
+          subtitle="Enriched intelligence"
+        />
+        <StatCard
+          title="Average CVSS"
+          value={String(cveStats?.average_cvss ?? '—')}
+          subtitle="CVE base score"
+        />
+        <StatCard
+          title="Average EPSS"
+          value={String(cveStats?.average_epss ?? '—')}
+          subtitle="Exploit probability"
+        />
+        <StatCard
+          title="KEV Count"
+          value={String(cveStats?.kev_count ?? 0)}
+          subtitle="Known exploited vulnerabilities"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Verified Exploits"
+          value={String(exploitStats?.verified_count ?? 0)}
+          subtitle={`${exploitStats?.success_rate ?? 0}% success rate`}
+        />
+        <StatCard
+          title="Potential Exploits"
+          value={String(exploitStats?.total_exploits ?? 0)}
+          subtitle="Total exploit candidates"
+        />
+        <StatCard
+          title="Sessions Created"
+          value={String(exploitStats?.session_count ?? 0)}
+          subtitle="Active sessions"
+        />
+        <StatCard
+          title="Failed Attempts"
+          value={String(exploitStats?.failed_count ?? 0)}
+          subtitle="Verification failures"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card title="Risk Distribution" subtitle={`${totalVulns} total findings`}>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={riskData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {riskData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            {totalVulns > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={riskData.filter((d) => d.value > 0)}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {riskData.filter((d) => d.value > 0).map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-surface-400 text-sm">
+                No vulnerability data yet
+              </div>
+            )}
           </div>
         </Card>
 
@@ -134,6 +218,21 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </Card>
+
+        <Card title="Most Affected Vendors" subtitle="Top vendors by CVE count">
+          <div className="space-y-2">
+            {cveStats?.top_vendors && cveStats.top_vendors.length > 0 ? (
+              cveStats.top_vendors.map((v) => (
+                <div key={v.vendor} className="flex items-center justify-between p-2 rounded bg-surface-50 dark:bg-surface-800/50">
+                  <span className="text-sm font-medium text-surface-700 dark:text-surface-300">{v.vendor}</span>
+                  <Badge variant="warning">{v.count}</Badge>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-surface-400 text-center py-4">No vendor data yet</p>
+            )}
           </div>
         </Card>
       </div>
@@ -170,6 +269,43 @@ export function Dashboard() {
           </table>
         </div>
       </Card>
+
+      {highRiskCves.length > 0 && (
+        <Card title="Highest Risk CVEs" subtitle="CVSS ≥ 7.0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-surface-200 dark:border-surface-700">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">CVE ID</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">Description</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">CVSS</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Severity</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">EPSS</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">KEV</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">Vendor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
+                {highRiskCves.map((c) => (
+                  <tr key={c.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-primary-600 dark:text-primary-400">{c.cve_id}</td>
+                    <td className="px-4 py-3 max-w-xs truncate text-surface-600 dark:text-surface-400">{c.description || '—'}</td>
+                    <td className="px-4 py-3 text-center font-medium">{c.cvss_score ?? '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={c.cvss_severity === 'Critical' ? 'danger' : c.cvss_severity === 'High' ? 'warning' : 'info'}>
+                        {c.cvss_severity || '—'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs">{c.epss_score != null ? `${(c.epss_score * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="px-4 py-3 text-center">{c.kev_status ? <Badge variant="danger">KEV</Badge> : '—'}</td>
+                    <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{c.vendor || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {loading ? (
         <Card>

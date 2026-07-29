@@ -74,7 +74,12 @@ class TestPortScanHandler:
         mock_inner_session.execute.return_value.scalar_one_or_none.return_value = mock_inner_port
         mock_inner_session.commit = AsyncMock()
 
-        sessions = [mock_outer_session, mock_inner_session]
+        mock_meta_session = AsyncMock()
+        mock_meta_session.commit = AsyncMock()
+        mock_meta_session.add = MagicMock()
+        mock_meta_session.flush = AsyncMock()
+
+        sessions = [mock_outer_session, mock_inner_session, mock_meta_session]
         session_idx = 0
 
         def enter_side_effect():

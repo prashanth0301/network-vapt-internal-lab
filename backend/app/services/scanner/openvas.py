@@ -34,6 +34,38 @@ class OpenVASScanner(VulnerabilityScanner):
             "OpenVAS configured: {host}:{port}", host=self._host, port=self._port
         )
 
+    async def connect(self) -> bool:
+        if not self._host:
+            logger.error("OpenVAS cannot connect: host not configured")
+            self._connected = False
+            return False
+        logger.info("OpenVAS connecting to {host}:{port}", host=self._host, port=self._port)
+        self._connected = True
+        return True
+
+    async def disconnect(self) -> bool:
+        logger.info("OpenVAS disconnecting from {host}:{port}", host=self._host, port=self._port)
+        self._connected = False
+        return True
+
+    async def scan(
+        self,
+        target: str,
+        ports: Optional[str] = None,
+        scan_profile: Optional[str] = None,
+    ) -> str:
+        scan_id = f"openvas-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{hash(target) % 10000:04d}"
+        logger.info(
+            "OpenVAS scan {sid} started for {target}",
+            sid=scan_id,
+            target=target,
+        )
+        return scan_id
+
+    async def cancel(self, scan_id: str) -> bool:
+        logger.info("OpenVAS cancelling scan {sid}", sid=scan_id)
+        return True
+
     async def run_scan(
         self,
         target: str,

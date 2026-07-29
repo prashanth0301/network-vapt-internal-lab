@@ -48,6 +48,28 @@ class ScanResult:
 class VulnerabilityScanner(ABC):
     def __init__(self, name: str = "unknown"):
         self.name = name
+        self._connected = False
+
+    @abstractmethod
+    async def connect(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def disconnect(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def scan(
+        self,
+        target: str,
+        ports: Optional[str] = None,
+        scan_profile: Optional[str] = None,
+    ) -> str:
+        pass
+
+    @abstractmethod
+    async def cancel(self, scan_id: str) -> bool:
+        pass
 
     @abstractmethod
     async def run_scan(
@@ -65,6 +87,9 @@ class VulnerabilityScanner(ABC):
     @abstractmethod
     async def fetch_results(self, scan_id: str) -> ScanResult:
         pass
+
+    def is_connected(self) -> bool:
+        return self._connected
 
     def normalize_severity(self, severity: Optional[str]) -> str:
         if not severity:

@@ -398,7 +398,12 @@ class TestServiceIntelligenceHandler:
         write_session.commit = AsyncMock()
         write_session.add = MagicMock()
 
-        sessions = [fetch_session, write_session]
+        meta_session = AsyncMock()
+        meta_session.commit = AsyncMock()
+        meta_session.add = MagicMock()
+        meta_session.flush = AsyncMock()
+
+        sessions = [fetch_session, write_session, meta_session]
         session_idx = 0
 
         def enter_side_effect():

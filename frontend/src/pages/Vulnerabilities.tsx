@@ -3,24 +3,15 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { VulnerabilityDetailModal } from '../components/VulnerabilityDetailModal';
 import type { Vulnerability } from '../types/vulnerability';
 import { getVulnerabilities, getVulnerabilitySummary } from '../services/vulnerabilityService';
 
-function severityClass(severity: string | null): string {
-  switch (severity) {
-    case 'Critical': return 'text-critical';
-    case 'High': return 'text-high';
-    case 'Medium': return 'text-medium';
-    case 'Low': return 'text-low';
-    default: return 'text-info';
-  }
-}
-
-function severityBadge(severity: string | null): 'danger' | 'warning' | 'info' | 'primary' | 'default' {
+function severityBadge(severity: string | null): 'danger' | 'warning' | 'info' | 'default' {
   switch (severity) {
     case 'Critical': return 'danger';
     case 'High': return 'warning';
-    case 'Medium': return 'primary';
+    case 'Medium': return 'info';
     case 'Low': return 'info';
     default: return 'default';
   }
@@ -39,6 +30,7 @@ export function Vulnerabilities() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const perPage = 20;
+  const [selectedVulnId, setSelectedVulnId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -185,7 +177,7 @@ export function Vulnerabilities() {
                 </thead>
                 <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
                   {vulns.map((v) => (
-                    <tr key={v.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
+                    <tr key={v.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer" onClick={() => setSelectedVulnId(v.id)}>
                       <td className="px-3 py-3">
                         <span className="font-medium text-surface-900 dark:text-surface-100">{v.name}</span>
                         {v.description && (
@@ -225,6 +217,12 @@ export function Vulnerabilities() {
           </>
         )}
       </Card>
+
+      <VulnerabilityDetailModal
+        vulnId={selectedVulnId}
+        open={selectedVulnId !== null}
+        onClose={() => setSelectedVulnId(null)}
+      />
     </div>
   );
 }

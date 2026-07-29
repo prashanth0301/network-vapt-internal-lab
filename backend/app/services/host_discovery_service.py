@@ -10,6 +10,7 @@ from app.core.database import async_session_factory
 from app.models.host import Host
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
+from app.services.artifact_manager import artifact_manager
 from app.services.nmap_service import NmapHostResult, run_scan
 
 
@@ -29,6 +30,27 @@ async def host_discovery_handler(
     scan_type = params.get("scan_type", "ping_sweep")
     extra_args = params.get("extra_args")
 
+    start_time = datetime.now(timezone.utc)
+    artifact_dir = artifact_manager.create_stage_directory(
+        assessment_id, "host_discovery"
+    )
+
+    cmd_parts = ["nmap", "-sn", target]
+    if extra_args:
+        cmd_parts.extend(extra_args)
+    command_str = " ".join(cmd_parts)
+    artifact_manager.save_command(artifact_dir, command_str)
+
+    metadata = {
+        "assessment_id": assessment_id,
+        "stage": "host_discovery",
+        "scan_type": scan_type,
+        "target": target,
+        "parameters": params,
+        "start_time": start_time.isoformat(),
+    }
+    artifact_manager.save_metadata(artifact_dir, metadata)
+
     if tracker:
         tracker.update_stage_status("host_discovery", StageStatus.RUNNING)
 
@@ -46,10 +68,50 @@ async def host_discovery_handler(
             "Host discovery scan failed: {error}",
             error=result.error,
         )
+        artifact_manager.save_error(artifact_dir, result.error)
+        end_time = datetime.now(timezone.utc)
+        async with async_session_factory() as session:
+            await artifact_manager.store_metadata(
+                session=session,
+                assessment_id=assessment_id,
+                stage_name="host_discovery",
+                artifact_dir=artifact_dir,
+                status="failed",
+                scanner_name="nmap",
+                command=command_str,
+                parameters=params,
+                target=target,
+                start_time=start_time,
+                end_time=end_time,
+                error_message=result.error,
+                output_type="text",
+            )
+            await session.commit()
         return {"success": False, "error": result.error}
 
     if tracker:
         tracker.update_stage_progress("host_discovery", 60.0)
+
+    if result.raw_output:
+        artifact_manager.save_xml(artifact_dir, result.raw_output)
+
+    hosts_data = [
+        {
+            "ip": h.ip_address,
+            "hostname": h.hostname,
+            "mac": h.mac_address,
+            "vendor": h.vendor,
+            "os": h.os_name,
+            "status": h.status,
+        }
+        for h in result.hosts
+    ]
+    artifact_manager.save_json(artifact_dir, {
+        "scan_type": scan_type,
+        "target": target,
+        "total_hosts": len(result.hosts),
+        "hosts": hosts_data,
+    })
 
     hosts_stored = 0
     try:
@@ -68,10 +130,48 @@ async def host_discovery_handler(
             "Failed to store discovery results: {error}",
             error=str(e),
         )
+        end_time = datetime.now(timezone.utc)
+        async with async_session_factory() as session:
+            await artifact_manager.store_metadata(
+                session=session,
+                assessment_id=assessment_id,
+                stage_name="host_discovery",
+                artifact_dir=artifact_dir,
+                status="failed",
+                scanner_name="nmap",
+                command=command_str,
+                parameters=params,
+                target=target,
+                start_time=start_time,
+                end_time=end_time,
+                error_message=f"Database storage error: {str(e)}",
+                output_type="text",
+            )
+            await session.commit()
         return {
             "success": False,
             "error": f"Database storage error: {str(e)}",
         }
+
+    end_time = datetime.now(timezone.utc)
+    duration = (end_time - start_time).total_seconds()
+    async with async_session_factory() as session:
+        await artifact_manager.store_metadata(
+            session=session,
+            assessment_id=assessment_id,
+            stage_name="host_discovery",
+            artifact_dir=artifact_dir,
+            status="completed",
+            scanner_name="nmap",
+            command=command_str,
+            parameters=params,
+            target=target,
+            start_time=start_time,
+            end_time=end_time,
+            duration=duration,
+            output_type="xml",
+        )
+        await session.commit()
 
     if tracker:
         tracker.update_stage_progress("host_discovery", 100.0)

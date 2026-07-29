@@ -1,0 +1,55 @@
+import type { ApiResponse, PaginatedResponse } from '../types/common';
+import type { CVE, CVEStatistics } from '../types/cve';
+import apiClient from './api';
+
+export async function getCVEs(
+  severity?: string,
+  vendor?: string,
+  product?: string,
+  year?: number,
+  search?: string,
+  kevOnly = false,
+  sortBy = 'cvss_score',
+  sortOrder = 'desc',
+  page = 1,
+  perPage = 20,
+): Promise<PaginatedResponse<CVE>> {
+  const params = new URLSearchParams();
+  if (severity) params.set('severity', severity);
+  if (vendor) params.set('vendor', vendor);
+  if (product) params.set('product', product);
+  if (year) params.set('year', String(year));
+  if (search) params.set('search', search);
+  if (kevOnly) params.set('kev_only', 'true');
+  params.set('sort_by', sortBy);
+  params.set('sort_order', sortOrder);
+  params.set('page', String(page));
+  params.set('per_page', String(perPage));
+  const response = await apiClient.get<PaginatedResponse<CVE>>(`/v1/cves?${params}`);
+  return response.data;
+}
+
+export async function getCVEById(id: string): Promise<ApiResponse<CVE>> {
+  const response = await apiClient.get<ApiResponse<CVE>>(`/v1/cves/${id}`);
+  return response.data;
+}
+
+export async function searchCVEs(q: string): Promise<ApiResponse<CVE[]>> {
+  const response = await apiClient.get<ApiResponse<CVE[]>>(`/v1/cves/search?q=${encodeURIComponent(q)}`);
+  return response.data;
+}
+
+export async function getCVEsByVulnerability(vulnId: string): Promise<ApiResponse<CVE[]>> {
+  const response = await apiClient.get<ApiResponse<CVE[]>>(`/v1/cves/by-vulnerability/${vulnId}`);
+  return response.data;
+}
+
+export async function getHighRiskCVEs(limit = 20): Promise<ApiResponse<CVE[]>> {
+  const response = await apiClient.get<ApiResponse<CVE[]>>(`/v1/cves/high-risk?limit=${limit}`);
+  return response.data;
+}
+
+export async function getCVEStatistics(): Promise<ApiResponse<CVEStatistics>> {
+  const response = await apiClient.get<ApiResponse<CVEStatistics>>('/v1/cves/statistics');
+  return response.data;
+}

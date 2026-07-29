@@ -1,11 +1,15 @@
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.vulnerability import Vulnerability
+    from app.models.exploit import Exploit
 
 
 class Service(UUIDMixin, TimestampMixin, Base):
@@ -33,3 +37,9 @@ class Service(UUIDMixin, TimestampMixin, Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     port: Mapped["Port"] = relationship("Port", back_populates="services")
+    vulnerabilities: Mapped[list["Vulnerability"]] = relationship(
+        "Vulnerability", back_populates="service"
+    )
+    exploits: Mapped[list["Exploit"]] = relationship(
+        "Exploit", back_populates="service"
+    )

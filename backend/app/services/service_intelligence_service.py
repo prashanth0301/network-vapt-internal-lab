@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
@@ -12,6 +13,7 @@ from app.core.database import async_session_factory
 from app.models.host import Host
 from app.models.port import Port
 from app.models.service import Service
+from app.services.artifact_manager import artifact_manager
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
 
@@ -288,6 +290,23 @@ async def service_intelligence_handler(
         target=target,
     )
 
+    start_time = datetime.now(timezone.utc)
+    artifact_dir = artifact_manager.create_stage_directory(
+        assessment_id, "service_intelligence"
+    )
+
+    command_str = f"service_intelligence assessment={assessment_id} target={target}"
+    artifact_manager.save_command(artifact_dir, command_str)
+
+    metadata = {
+        "assessment_id": assessment_id,
+        "stage": "service_intelligence",
+        "target": target,
+        "parameters": parameters or {},
+        "start_time": start_time.isoformat(),
+    }
+    artifact_manager.save_metadata(artifact_dir, metadata)
+
     if tracker:
         tracker.update_stage_status("service_intelligence", StageStatus.RUNNING)
         tracker.update_stage_progress("service_intelligence", 5.0)
@@ -306,6 +325,29 @@ async def service_intelligence_handler(
 
     if not services:
         logger.warning("No services found for assessment {id}", id=assessment_id)
+        end_time = datetime.now(timezone.utc)
+        artifact_manager.save_json(artifact_dir, {
+            "status": "no_services",
+            "total_services": 0,
+            "total_enriched": 0,
+        })
+        async with async_session_factory() as session:
+            await artifact_manager.store_metadata(
+                session=session,
+                assessment_id=assessment_id,
+                stage_name="service_intelligence",
+                artifact_dir=artifact_dir,
+                status="completed",
+                scanner_name="service_intelligence",
+                command=command_str,
+                parameters=parameters or {},
+                target=target,
+                start_time=start_time,
+                end_time=end_time,
+                duration=(end_time - start_time).total_seconds(),
+                output_type="json",
+            )
+            await session.commit()
         if tracker:
             tracker.update_stage_progress("service_intelligence", 100.0)
             tracker.update_stage_status("service_intelligence", StageStatus.COMPLETED)
@@ -315,6 +357,7 @@ async def service_intelligence_handler(
     enriched_count = 0
     categories_found = {}
     confidence_distribution = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
+    enriched_services_data = []
 
     progress_per_service = 80.0 / total if total > 0 else 0
 
@@ -324,6 +367,19 @@ async def service_intelligence_handler(
                 enrich_service(service)
                 session.add(service)
                 enriched_count += 1
+
+                enriched_services_data.append({
+                    "id": str(service.id),
+                    "name": service.name,
+                    "normalized_name": service.normalized_name,
+                    "product": service.product,
+                    "normalized_product": service.normalized_product,
+                    "version": service.version,
+                    "normalized_version": service.normalized_version,
+                    "category": service.category,
+                    "confidence": service.confidence,
+                    "notes": service.notes,
+                })
 
                 if service.category:
                     categories_found[service.category] = categories_found.get(service.category, 0) + 1
@@ -346,6 +402,37 @@ async def service_intelligence_handler(
                 logger.error("Failed to enrich service {id}: {error}", id=service.id, error=str(e))
                 continue
 
+        await session.commit()
+
+    end_time = datetime.now(timezone.utc)
+    duration = (end_time - start_time).total_seconds()
+
+    results_json = {
+        "status": "completed",
+        "total_services": total,
+        "total_enriched": enriched_count,
+        "categories": categories_found,
+        "confidence_distribution": confidence_distribution,
+        "services": enriched_services_data,
+    }
+    artifact_manager.save_json(artifact_dir, results_json)
+
+    async with async_session_factory() as session:
+        await artifact_manager.store_metadata(
+            session=session,
+            assessment_id=assessment_id,
+            stage_name="service_intelligence",
+            artifact_dir=artifact_dir,
+            status="completed",
+            scanner_name="service_intelligence",
+            command=command_str,
+            parameters=parameters or {},
+            target=target,
+            start_time=start_time,
+            end_time=end_time,
+            duration=duration,
+            output_type="json",
+        )
         await session.commit()
 
     if tracker:

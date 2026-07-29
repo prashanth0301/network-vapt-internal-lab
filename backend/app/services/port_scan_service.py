@@ -12,6 +12,7 @@ from app.models.port import Port
 from app.models.service import Service
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
+from app.services.artifact_manager import artifact_manager
 from app.services.nmap_service import NmapPortResult, run_scan
 
 
@@ -20,6 +21,32 @@ SCAN_PROFILES = {
     "custom_range": {"display_name": "Custom Port Range", "ports": None, "extra_args": None},
     "all_ports": {"display_name": "All Ports (1-65535)", "ports": "1-65535", "extra_args": None},
 }
+
+
+async def _save_port_scan_artifacts(
+    artifact_dir, hosts_data, result, host_target
+):
+    if result.raw_output:
+        artifact_manager.save_xml(artifact_dir, result.raw_output)
+
+    if result.hosts and result.hosts[0].open_ports:
+        ports_json = [
+            {
+                "port": p.port,
+                "protocol": p.protocol,
+                "state": p.state,
+                "service_name": p.service_name,
+                "product": p.product,
+                "version": p.version,
+            }
+            for p in result.hosts[0].open_ports
+        ]
+        host_safe = host_target.replace(".", "_")
+        artifact_manager.save_json(
+            artifact_dir,
+            {"host": host_target, "ports": ports_json},
+            filename=f"ports_{host_safe}.json",
+        )
 
 
 async def port_scan_handler(
@@ -40,15 +67,41 @@ async def port_scan_handler(
     ports = params.get("ports")
     extra_args = params.get("extra_args")
 
+    start_time = datetime.now(timezone.utc)
+    artifact_dir = artifact_manager.create_stage_directory(
+        assessment_id, "port_scan"
+    )
+
+    profile = SCAN_PROFILES.get(scan_profile, SCAN_PROFILES["top_ports"])
+    resolved_ports = ports or profile.get("ports")
+    resolved_extra_args = extra_args or profile.get("extra_args")
+
+    cmd_parts = ["nmap", "-sS"]
+    if resolved_ports:
+        cmd_parts.extend(["-p", str(resolved_ports)])
+    cmd_parts.append(target)
+    if resolved_extra_args:
+        cmd_parts.extend(resolved_extra_args)
+    command_str = " ".join(cmd_parts)
+    artifact_manager.save_command(artifact_dir, command_str)
+
+    metadata = {
+        "assessment_id": assessment_id,
+        "stage": "port_scan",
+        "scan_profile": scan_profile,
+        "scan_type": scan_type,
+        "ports": resolved_ports,
+        "target": target,
+        "parameters": params,
+        "start_time": start_time.isoformat(),
+    }
+    artifact_manager.save_metadata(artifact_dir, metadata)
+
     if tracker:
         tracker.update_stage_status("port_scan", StageStatus.RUNNING)
 
     if tracker:
         tracker.update_stage_progress("port_scan", 5.0)
-
-    profile = SCAN_PROFILES.get(scan_profile, SCAN_PROFILES["top_ports"])
-    resolved_ports = ports or profile.get("ports")
-    resolved_extra_args = extra_args or profile.get("extra_args")
 
     if tracker:
         tracker.update_stage_progress("port_scan", 10.0)
@@ -61,6 +114,29 @@ async def port_scan_handler(
 
     if not alive_hosts:
         logger.warning("No alive hosts found to scan")
+        end_time = datetime.now(timezone.utc)
+        artifact_manager.save_json(artifact_dir, {
+            "status": "no_hosts",
+            "total_hosts_scanned": 0,
+            "total_ports_found": 0,
+        })
+        async with async_session_factory() as session:
+            await artifact_manager.store_metadata(
+                session=session,
+                assessment_id=assessment_id,
+                stage_name="port_scan",
+                artifact_dir=artifact_dir,
+                status="completed",
+                scanner_name="nmap",
+                command=command_str,
+                parameters=params,
+                target=target,
+                start_time=start_time,
+                end_time=end_time,
+                duration=(end_time - start_time).total_seconds(),
+                output_type="json",
+            )
+            await session.commit()
         if tracker:
             tracker.update_stage_progress("port_scan", 100.0)
         return {"success": True, "summary": {"total_hosts_scanned": 0, "total_ports_found": 0}}
@@ -70,6 +146,7 @@ async def port_scan_handler(
     total_services_found = 0
     scan_details = []
     host_progress_per_host = 80.0 / total_hosts if total_hosts > 0 else 0
+    scan_errors = []
 
     for idx, host in enumerate(alive_hosts):
         host_target = host.ip_address
@@ -88,6 +165,7 @@ async def port_scan_handler(
         if result.error:
             logger.error("Port scan failed for {ip}: {error}", ip=host_target, error=result.error)
             scan_details.append({"host": host_target, "error": result.error, "ports_found": 0})
+            scan_errors.append({"host": host_target, "error": result.error})
             continue
 
         if not result.hosts:
@@ -97,6 +175,8 @@ async def port_scan_handler(
         scanned_host = result.hosts[0]
         ports_found_for_host = 0
         services_found_for_host = 0
+
+        await _save_port_scan_artifacts(artifact_dir, {}, result, host_target)
 
         try:
             async with async_session_factory() as session:
@@ -110,6 +190,7 @@ async def port_scan_handler(
                 await session.commit()
         except Exception as e:
             logger.error("Failed to store port results for {ip}: {error}", ip=host_target, error=str(e))
+            scan_errors.append({"host": host_target, "error": str(e)})
             continue
 
         total_ports_found += ports_found_for_host
@@ -125,6 +206,39 @@ async def port_scan_handler(
         if tracker:
             progress = host_progress_start + host_progress_per_host
             tracker.update_stage_progress("port_scan", min(progress, 95.0))
+
+    end_time = datetime.now(timezone.utc)
+    duration = (end_time - start_time).total_seconds()
+
+    results_json = {
+        "scan_profile": scan_profile,
+        "scan_type": scan_type,
+        "target": target,
+        "total_hosts_scanned": total_hosts,
+        "total_ports_found": total_ports_found,
+        "total_services_found": total_services_found,
+        "scan_details": scan_details,
+        "errors": scan_errors,
+    }
+    artifact_manager.save_json(artifact_dir, results_json)
+
+    async with async_session_factory() as session:
+        await artifact_manager.store_metadata(
+            session=session,
+            assessment_id=assessment_id,
+            stage_name="port_scan",
+            artifact_dir=artifact_dir,
+            status="completed",
+            scanner_name="nmap",
+            command=command_str,
+            parameters=params,
+            target=target,
+            start_time=start_time,
+            end_time=end_time,
+            duration=duration,
+            output_type="json",
+        )
+        await session.commit()
 
     if tracker:
         tracker.update_stage_progress("port_scan", 100.0)

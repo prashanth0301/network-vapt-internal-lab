@@ -39,6 +39,10 @@ async def lifespan(app: FastAPI):
     from app.services.assessment import assessment_manager
     from app.services.port_scan_service import port_scan_handler
     from app.services.service_intelligence_service import service_intelligence_handler
+    from app.services.cve_intelligence_handler import cve_intelligence_handler
+    from app.services.exploit_verification_handler import (
+        exploit_verification_handler,
+    )
     from app.services.vulnerability_assessment_service import (
         vulnerability_assessment_handler,
     )
@@ -62,6 +66,16 @@ async def lifespan(app: FastAPI):
         "vulnerability_assessment", vulnerability_assessment_handler
     )
     logger.info("Registered vulnerability_assessment stage handler")
+
+    assessment_manager.stage_manager.register_handler(
+        "cve_intelligence", cve_intelligence_handler
+    )
+    logger.info("Registered cve_intelligence stage handler")
+
+    assessment_manager.stage_manager.register_handler(
+        "exploit_verification", exploit_verification_handler
+    )
+    logger.info("Registered exploit_verification stage handler")
 
     logger.info(
         "Application startup complete - {app_name} v{version}",

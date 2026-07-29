@@ -1,3 +1,4 @@
+from app.models.artifact import Artifact
 from app.models.base import Base
 from app.models.cve import CVE
 from app.models.exploit import Exploit
@@ -13,6 +14,7 @@ from app.models.setting import Setting
 from app.models.vulnerability import Vulnerability
 
 __all__ = [
+    "Artifact",
     "Base",
     "Host",
     "Port",

@@ -17,6 +17,7 @@ from app.services.vulnerability_assessment_service import (
     get_all_scanners,
     get_vulnerabilities_by_assessment,
     get_vulnerabilities_by_host,
+    get_vulnerabilities_by_service,
     get_vulnerability_by_id,
     get_vulnerability_summary,
 )
@@ -74,6 +75,16 @@ async def list_vulnerabilities_by_host(
     vulns = await get_vulnerabilities_by_host(db, host_id)
     items = [_vuln_to_response(v) for v in vulns]
     return SuccessResponse(data=items, message=f"Found {len(items)} vulnerabilities for host")
+
+
+@router.get("/by-service/{service_id}", response_model=SuccessResponse[list[VulnerabilityResponse]])
+async def list_vulnerabilities_by_service(
+    service_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    vulns = await get_vulnerabilities_by_service(db, service_id)
+    items = [_vuln_to_response(v) for v in vulns]
+    return SuccessResponse(data=items, message=f"Found {len(items)} vulnerabilities for service")
 
 
 @router.get("/by-assessment/{assessment_id}", response_model=SuccessResponse[list[VulnerabilityResponse]])
@@ -152,6 +163,7 @@ def _vuln_to_response(vuln) -> VulnerabilityResponse:
         host_id=vuln.host_id,
         scan_id=vuln.scan_id,
         port_id=vuln.port_id,
+        service_id=vuln.service_id,
         name=vuln.name,
         description=vuln.description,
         solution=vuln.solution,
@@ -159,6 +171,7 @@ def _vuln_to_response(vuln) -> VulnerabilityResponse:
         severity=vuln.severity,
         cvss_vector=vuln.cvss_vector,
         cve_ids=vuln.cve_ids,
+        cwe=vuln.cwe,
         plugin_id=vuln.plugin_id,
         plugin_output=vuln.plugin_output,
         scanner_name=vuln.scanner_name,
@@ -168,6 +181,9 @@ def _vuln_to_response(vuln) -> VulnerabilityResponse:
         affected_version=vuln.affected_version,
         evidence=vuln.evidence,
         raw_scanner_output=vuln.raw_scanner_output,
+        confidence=vuln.confidence,
+        references=vuln.references,
+        cve_count=vuln.cve_count,
         created_at=vuln.created_at,
         updated_at=vuln.updated_at,
         host_ip=host_ip,
