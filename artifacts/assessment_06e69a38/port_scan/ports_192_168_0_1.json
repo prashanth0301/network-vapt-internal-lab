@@ -1,0 +1,37 @@
+{
+  "host": "192.168.0.1",
+  "ports": [
+    {
+      "port": 23,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "telnet",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 53,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 80,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "http",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 1900,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "upnp",
+      "product": null,
+      "version": null
+    }
+  ]
+}

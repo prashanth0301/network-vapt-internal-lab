@@ -26,6 +26,7 @@ router = APIRouter(prefix="/hosts", tags=["Hosts"])
 async def list_hosts(
     status: Optional[str] = Query(None, description="Filter by host status"),
     alive_only: bool = Query(False, description="Show only alive hosts"),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db),
@@ -36,6 +37,7 @@ async def list_hosts(
         per_page=per_page,
         status=status,
         alive_only=alive_only,
+        assessment_id=assessment_id,
     )
     items = [
         HostResponse(
@@ -70,9 +72,10 @@ async def list_hosts(
     summary="Get host summary statistics",
 )
 async def hosts_summary(
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     db: AsyncSession = Depends(get_db),
 ):
-    summary = await get_host_summary(db)
+    summary = await get_host_summary(db, assessment_id)
     return SuccessResponse(
         data=summary,
         message="Host summary retrieved",
@@ -156,11 +159,19 @@ async def discover_hosts(
         target=body.target,
         parameters={"scan_type": body.scan_type},
     )
+    await assessment_manager.persist_assessment(assessment.id)
 
     logger.info(
-        "Created discovery assessment: {id} for target {target}",
+        "Assessment created: {id} - Host Discovery for target {target}",
         id=assessment.id,
         target=body.target,
+    )
+
+    record = await assessment_manager.start_assessment(assessment.id)
+    await assessment_manager.persist_assessment(assessment.id)
+    logger.info(
+        "Assessment started: {id} - Host Discovery pipeline launched",
+        id=assessment.id,
     )
 
     return SuccessResponse(
@@ -168,8 +179,7 @@ async def discover_hosts(
             "assessment_id": assessment.id,
             "target": body.target,
             "scan_type": body.scan_type,
-            "status": assessment.status.value,
-            "message": "Host discovery assessment created. Use GET /assessments/{id} to track progress.",
+            "status": record.status.value,
         },
         message="Discovery started",
     )

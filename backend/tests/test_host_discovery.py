@@ -127,6 +127,9 @@ class TestNmapCommandBuilder:
         assert "nmap" in cmd[0]
         assert "-sn" in cmd
         assert "-n" in cmd
+        assert "--host-timeout" in cmd
+        assert "--max-retries" in cmd
+        assert "--max-rtt-timeout" in cmd
         assert "192.168.56.0/24" in cmd
 
     def test_arp_scan_command(self):

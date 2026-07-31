@@ -35,9 +35,13 @@ async def cve_intelligence_handler(
         tracker.update_stage_progress("cve_intelligence", 5.0)
 
     async with async_session_factory() as session:
-        vulns_result = await session.execute(
-            select(Vulnerability).where(Vulnerability.cve_ids.isnot(None))
-        )
+        vulns_query = select(Vulnerability).where(Vulnerability.cve_ids.isnot(None))
+        if assessment_id:
+            try:
+                vulns_query = vulns_query.where(Vulnerability.scan_id == uuid.UUID(assessment_id))
+            except ValueError:
+                vulns_query = vulns_query.where(Vulnerability.scan_id.is_(None))
+        vulns_result = await session.execute(vulns_query)
         vulns_with_cves = list(vulns_result.scalars().all())
 
     if not vulns_with_cves:

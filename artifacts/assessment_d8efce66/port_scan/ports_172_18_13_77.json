@@ -1,0 +1,181 @@
+{
+  "host": "172.18.13.77",
+  "ports": [
+    {
+      "port": 25,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 110,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 119,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 135,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "msrpc",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 139,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "netbios-ssn",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 143,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 445,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "microsoft-ds",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 465,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 548,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 563,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 587,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 800,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 902,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "iss-realsecure",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 903,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 912,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "apex-mesh",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 993,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 995,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 1122,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 1433,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 3306,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "mysql",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 5357,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "wsdapi",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 5432,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "postgresql",
+      "product": null,
+      "version": null
+    }
+  ]
+}

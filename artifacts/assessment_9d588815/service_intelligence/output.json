@@ -1,0 +1,126 @@
+{
+  "status": "completed",
+  "total_services": 9,
+  "total_enriched": 9,
+  "categories": {
+    "Other": 5,
+    "File Sharing": 2,
+    "Database": 2
+  },
+  "confidence_distribution": {
+    "high": 0,
+    "medium": 9,
+    "low": 0,
+    "unknown": 0
+  },
+  "services": [
+    {
+      "id": "0e557fb6-5408-4461-9b72-762715bf1d29",
+      "name": "msrpc",
+      "normalized_name": "msrpc",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "7e991561-a04b-48e8-bc9c-340b691edbc2",
+      "name": "netbios-ssn",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'netbios-ssn' to 'SMB'"
+    },
+    {
+      "id": "23d2afb1-bb54-4eed-b65d-e47f4f294797",
+      "name": "microsoft-ds",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'microsoft-ds' to 'SMB'"
+    },
+    {
+      "id": "8585d2f7-367c-4030-ba51-1c5a15be4c62",
+      "name": "mysql",
+      "normalized_name": "MySQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'mysql' to 'MySQL'"
+    },
+    {
+      "id": "e5f9d154-97be-4002-9018-f86795a81e52",
+      "name": "wsdapi",
+      "normalized_name": "wsdapi",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "6a3241aa-6c3f-4680-a5d9-caaf28d1fa27",
+      "name": "postgresql",
+      "normalized_name": "PostgreSQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'postgresql' to 'PostgreSQL'"
+    },
+    {
+      "id": "573558b4-13b2-4f75-87e1-ec4a52c70b5c",
+      "name": "http-alt",
+      "normalized_name": "http-alt",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "b722d4a2-f62f-4232-a317-44eb4a7b62f9",
+      "name": "iss-realsecure",
+      "normalized_name": "iss-realsecure",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "940b1808-7645-4881-b5b5-6ce674b68aa8",
+      "name": "apex-mesh",
+      "normalized_name": "apex-mesh",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    }
+  ]
+}

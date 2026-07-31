@@ -1,0 +1,23 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "172.18.13.0/24",
+  "total_hosts": 2,
+  "hosts": [
+    {
+      "ip": "172.18.13.2",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    },
+    {
+      "ip": "172.18.13.77",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    }
+  ]
+}

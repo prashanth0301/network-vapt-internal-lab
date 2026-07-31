@@ -1,0 +1,23 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "10.143.46.0/24",
+  "total_hosts": 2,
+  "hosts": [
+    {
+      "ip": "10.143.46.153",
+      "hostname": null,
+      "mac": "ee:8f:96:e5:28:09",
+      "vendor": null,
+      "os": "Linux / Unix",
+      "status": "up"
+    },
+    {
+      "ip": "10.143.46.132",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": "Linux / Unix",
+      "status": "up"
+    }
+  ]
+}

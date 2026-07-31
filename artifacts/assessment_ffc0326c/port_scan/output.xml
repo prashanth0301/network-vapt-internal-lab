@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Fri Jul 31 23:21:16 2026 as: E:\\Nmap\\nmap.EXE -sT -T4 -p 22,80,443 -oX - -&#45;no-stylesheet 192.168.56.255 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.EXE -sT -T4 -p 22,80,443 -oX - -&#45;no-stylesheet 192.168.56.255" start="1785520276" startstr="Fri Jul 31 23:21:16 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="connect" protocol="tcp" numservices="3" services="22,80,443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<hosthint><status state="up" reason="unknown-response" reason_ttl="0"/>
+<address addr="192.168.56.255" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</hosthint>
+<host starttime="1785520279" endtime="1785520282"><status state="up" reason="reset" reason_ttl="63"/>
+<address addr="192.168.56.255" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="22"><state state="filtered" reason="no-response" reason_ttl="0"/><service name="ssh" method="table" conf="3"/></port>
+<port protocol="tcp" portid="80"><state state="filtered" reason="no-response" reason_ttl="0"/><service name="http" method="table" conf="3"/></port>
+<port protocol="tcp" portid="443"><state state="filtered" reason="no-response" reason_ttl="0"/><service name="https" method="table" conf="3"/></port>
+</ports>
+<times srtt="2000" rttvar="5000" to="100000"/>
+</host>
+<runstats><finished time="1785520282" timestr="Fri Jul 31 23:21:22 2026" summary="Nmap done at Fri Jul 31 23:21:22 2026; 1 IP address (1 host up) scanned in 6.82 seconds" elapsed="6.82" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

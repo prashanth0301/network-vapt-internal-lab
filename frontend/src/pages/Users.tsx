@@ -43,7 +43,7 @@ export function Users() {
         {error && (
           <div className="p-4 mb-4 text-critical bg-critical/10 rounded-lg border border-critical/20 text-sm">
             {error}
-            <Button variant="ghost" size="xs" className="ml-3" onClick={fetchData}>Retry</Button>
+            <Button variant="ghost" size="sm" className="ml-3" onClick={fetchData}>Retry</Button>
           </div>
         )}
 

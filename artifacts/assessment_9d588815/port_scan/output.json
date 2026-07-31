@@ -1,0 +1,17 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "target": "192.168.0.104",
+  "total_hosts_scanned": 1,
+  "total_ports_found": 8,
+  "total_services_found": 8,
+  "scan_details": [
+    {
+      "host": "192.168.0.104",
+      "ports_found": 8,
+      "services_found": 8,
+      "duration_seconds": 3.221848
+    }
+  ],
+  "errors": []
+}

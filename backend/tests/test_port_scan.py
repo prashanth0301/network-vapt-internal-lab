@@ -29,6 +29,72 @@ class TestScanProfiles:
         assert profile["ports"] == "1-65535"
 
 
+class TestPortScanRequestSchema:
+    def test_valid_tcp_syn_top_ports(self):
+        from app.schemas.port import PortScanRequest
+
+        req = PortScanRequest(target="127.0.0.1", scan_type="tcp_syn", scan_profile="top_ports")
+        assert req.scan_type == "tcp_syn"
+
+    def test_custom_range_requires_ports(self):
+        from pydantic import ValidationError
+
+        from app.schemas.port import PortScanRequest
+
+        with pytest.raises(ValidationError, match="Ports are required"):
+            PortScanRequest(target="127.0.0.1", scan_type="tcp_syn", scan_profile="custom_range")
+
+    def test_invalid_scan_type_rejected(self):
+        from pydantic import ValidationError
+
+        from app.schemas.port import PortScanRequest
+
+        with pytest.raises(ValidationError):
+            PortScanRequest(target="127.0.0.1", scan_type="version_detection", scan_profile="top_ports")
+
+    def test_invalid_ports_rejected(self):
+        from pydantic import ValidationError
+
+        from app.schemas.port import PortScanRequest
+
+        with pytest.raises(ValidationError, match="Ports must be"):
+            PortScanRequest(target="127.0.0.1", scan_type="tcp_syn", scan_profile="custom_range", ports="80,foo")
+
+
+class TestScanTypeValidation:
+    @pytest.mark.asyncio
+    async def test_handler_rejects_invalid_scan_type(self):
+        from app.services.port_scan_service import port_scan_handler
+
+        result = await port_scan_handler("test-id", "127.0.0.1", {"scan_type": "os_detection"})
+        assert result["success"] is False
+        assert "Invalid scan_type" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_handler_defaults_to_tcp_syn_when_blank(self):
+        from app.services.port_scan_service import port_scan_handler
+
+        with patch("app.services.port_scan_service.build_command") as mock_build:
+            mock_build.return_value = ["nmap", "-sS", "127.0.0.1"]
+            with patch("app.services.port_scan_service.async_session_factory") as mock_sf:
+                mock_session = AsyncMock()
+                mock_session.execute = AsyncMock()
+                mock_session.execute.return_value = MagicMock()
+                mock_session.execute.return_value.scalars = MagicMock(return_value=MagicMock())
+                mock_session.execute.return_value.scalars.return_value.all.return_value = []
+                mock_cm = MagicMock()
+                mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_cm.__aexit__ = AsyncMock(return_value=None)
+                mock_sf.return_value = mock_cm
+
+                with patch("app.services.port_scan_service.host_discovery_handler") as mock_discovery:
+                    mock_discovery.return_value = {"success": True, "summary": {"total_hosts_found": 0}}
+
+                    result = await port_scan_handler("test-id", "127.0.0.1", {})
+                    assert result["success"] is True
+                    assert mock_build.call_args.args[0] == "tcp_syn"
+
+
 class TestPortScanHandler:
     @pytest.mark.asyncio
     async def test_handler_no_alive_hosts(self):
@@ -46,15 +112,110 @@ class TestPortScanHandler:
             mock_cm.__aexit__ = AsyncMock(return_value=None)
             mock_sf.return_value = mock_cm
 
-            result = await port_scan_handler("test-id", "192.168.56.0/24", {"scan_type": "tcp_syn"})
-            assert result["success"] is True
-            assert result["summary"]["total_hosts_scanned"] == 0
-            assert result["summary"]["total_ports_found"] == 0
+            with patch("app.services.port_scan_service.host_discovery_handler") as mock_discovery:
+                mock_discovery.return_value = {"success": True, "summary": {"total_hosts_found": 0}}
+
+                result = await port_scan_handler("test-id", "192.168.56.0/24", {"scan_type": "tcp_syn"})
+                assert result["success"] is True
+                assert result["summary"]["total_hosts_scanned"] == 0
+                assert result["summary"]["total_ports_found"] == 0
+                mock_discovery.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handler_bootstraps_hosts_when_none_exist(self):
+        from app.services.port_scan_service import port_scan_handler
+
+        assessment_id = str(uuid.uuid4())
+        mock_host = MagicMock()
+        mock_host.id = uuid.uuid4()
+        mock_host.ip_address = "192.168.56.20"
+        mock_host.is_alive = True
+
+        empty_session = AsyncMock()
+        empty_session.execute = AsyncMock()
+        empty_session.execute.return_value = MagicMock()
+        empty_session.execute.return_value.scalars = MagicMock(return_value=MagicMock())
+        empty_session.execute.return_value.scalars.return_value.all.return_value = []
+
+        hosts_session = AsyncMock()
+        hosts_session.execute = AsyncMock()
+        hosts_session.execute.return_value = MagicMock()
+        hosts_session.execute.return_value.scalars = MagicMock(return_value=MagicMock())
+        hosts_session.execute.return_value.scalars.return_value.all.return_value = [mock_host]
+
+        upsert_session = AsyncMock()
+        upsert_session.execute = AsyncMock()
+        upsert_session.execute.return_value = MagicMock()
+        upsert_session.execute.return_value.scalar_one_or_none.return_value = None
+        upsert_session.commit = AsyncMock()
+        upsert_session.add = MagicMock()
+        upsert_session.flush = AsyncMock()
+
+        meta_session = AsyncMock()
+        meta_session.commit = AsyncMock()
+        meta_session.add = MagicMock()
+        meta_session.flush = AsyncMock()
+
+        sessions = [empty_session, hosts_session, upsert_session, meta_session]
+        session_idx = 0
+
+        def enter_side_effect():
+            nonlocal session_idx
+            idx = session_idx
+            session_idx += 1
+            return sessions[idx]
+
+        with patch("app.services.port_scan_service.async_session_factory") as mock_sf:
+            mock_sf.return_value = MagicMock()
+            mock_sf.return_value.__aenter__ = AsyncMock(side_effect=enter_side_effect)
+            mock_sf.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with patch("app.services.port_scan_service.host_discovery_handler") as mock_discovery:
+                mock_discovery.return_value = {"success": True, "summary": {"total_hosts_found": 1}}
+
+                with patch("app.services.port_scan_service.run_scan") as mock_scan:
+                    mock_scan.return_value = NmapScanResult(
+                        scan_type="tcp_syn", target="192.168.56.20",
+                        hosts=[NmapHostResult(ip_address="192.168.56.20", status="up",
+                            open_ports=[NmapPortResult(port=22, protocol="tcp", state="open", service_name="ssh")])],
+                        duration_seconds=3.0,
+                    )
+
+                    result = await port_scan_handler(assessment_id, "192.168.56.0/24", {"scan_type": "tcp_syn"})
+                    assert result["success"] is True
+                    assert result["summary"]["total_hosts_scanned"] == 1
+                    assert result["summary"]["total_ports_found"] == 1
+                    mock_discovery.assert_called_once()
+                    assert mock_discovery.call_args.kwargs["assessment_id"] == assessment_id
+
+    @pytest.mark.asyncio
+    async def test_handler_bootstrap_failure_returns_error(self):
+        from app.services.port_scan_service import port_scan_handler
+
+        with patch("app.services.port_scan_service.async_session_factory") as mock_sf:
+            mock_session = AsyncMock()
+            mock_session.execute = AsyncMock()
+            mock_session.execute.return_value = MagicMock()
+            mock_session.execute.return_value.scalars = MagicMock(return_value=MagicMock())
+            mock_session.execute.return_value.scalars.return_value.all.return_value = []
+
+            mock_cm = MagicMock()
+            mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cm.__aexit__ = AsyncMock(return_value=None)
+            mock_sf.return_value = mock_cm
+
+            with patch("app.services.port_scan_service.host_discovery_handler") as mock_discovery:
+                mock_discovery.return_value = {"success": False, "error": "discovery failed"}
+
+                result = await port_scan_handler("test-id", "192.168.56.0/24", {"scan_type": "tcp_syn"})
+                assert result["success"] is False
+                assert result["error"] == "discovery failed"
 
     @pytest.mark.asyncio
     async def test_handler_with_alive_hosts_scan(self):
         from app.services.port_scan_service import port_scan_handler
 
+        assessment_id = str(uuid.uuid4())
         mock_host = MagicMock()
         mock_host.id = uuid.uuid4()
         mock_host.ip_address = "192.168.56.20"
@@ -101,7 +262,7 @@ class TestPortScanHandler:
                     duration_seconds=3.0,
                 )
 
-                result = await port_scan_handler("test-id", "192.168.56.0/24", {"scan_type": "tcp_syn"})
+                result = await port_scan_handler(assessment_id, "192.168.56.0/24", {"scan_type": "tcp_syn"})
                 assert result["success"] is True
                 assert result["summary"]["total_hosts_scanned"] == 1
                 assert result["summary"]["total_ports_found"] == 1

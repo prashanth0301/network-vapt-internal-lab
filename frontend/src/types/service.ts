@@ -25,4 +25,5 @@ export interface ServiceIntelligence {
 
 export interface ServiceEnrichRequest {
   service_ids?: string[];
+  assessment_id?: string;
 }

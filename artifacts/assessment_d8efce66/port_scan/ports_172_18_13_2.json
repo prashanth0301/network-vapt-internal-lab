@@ -1,0 +1,53 @@
+{
+  "host": "172.18.13.2",
+  "ports": [
+    {
+      "port": 22,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "ssh",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 80,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "http",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 113,
+      "protocol": "tcp",
+      "state": "closed",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 443,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "https",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 541,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "uucp-rlogin",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 1000,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "cadlock",
+      "product": null,
+      "version": null
+    }
+  ]
+}

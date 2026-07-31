@@ -1,0 +1,29 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_connect",
+  "target": "192.168.0.101",
+  "total_hosts_scanned": 3,
+  "total_ports_found": 30,
+  "total_services_found": 28,
+  "scan_details": [
+    {
+      "host": "192.168.0.1",
+      "ports_found": 13,
+      "services_found": 12,
+      "duration_seconds": 6.798003
+    },
+    {
+      "host": "192.168.0.102",
+      "ports_found": 10,
+      "services_found": 9,
+      "duration_seconds": 8.882406
+    },
+    {
+      "host": "192.168.0.104",
+      "ports_found": 7,
+      "services_found": 7,
+      "duration_seconds": 4.627757
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,15 @@
+{
+  "assessment_id": "0409c338-b9c5-4300-9d2a-1c83d9acd645",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "ports": null,
+  "target": "192.168.0.104",
+  "parameters": {
+    "scan_type": "tcp_syn",
+    "scan_profile": "top_ports",
+    "ports": null,
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T16:53:55.439959+00:00"
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Thu Jul 30 20:41:53 2026 as: E:\\Nmap\\nmap.EXE -sn -n -oX - -&#45;no-stylesheet 192.168.1.0/24 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.EXE -sn -n -oX - -&#45;no-stylesheet 192.168.1.0/24" start="1785424313" startstr="Thu Jul 30 20:41:53 2026" version="7.99" xmloutputversion="1.05">
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.168.1.1" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="4000" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="echo-reply" reason_ttl="64"/>
+<address addr="192.168.1.2" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="3000" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.168.1.7" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="107876" rttvar="74904" to="407492"/>
+</host>
+<runstats><finished time="1785424329" timestr="Thu Jul 30 20:42:09 2026" summary="Nmap done at Thu Jul 30 20:42:09 2026; 256 IP addresses (3 hosts up) scanned in 15.66 seconds" elapsed="15.66" exit="success"/><hosts up="3" down="253" total="256"/>
+</runstats>
+</nmaprun>

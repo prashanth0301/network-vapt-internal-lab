@@ -1,0 +1,21 @@
+{
+  "scan_profile": "all_ports",
+  "scan_type": "udp_scan",
+  "target": "192.168.0.104",
+  "total_hosts_scanned": 1,
+  "total_ports_found": 0,
+  "total_services_found": 0,
+  "scan_details": [
+    {
+      "host": "192.168.0.104",
+      "error": "Scan timed out after 300 seconds",
+      "ports_found": 0
+    }
+  ],
+  "errors": [
+    {
+      "host": "192.168.0.104",
+      "error": "Scan timed out after 300 seconds"
+    }
+  ]
+}

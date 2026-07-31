@@ -66,4 +66,4 @@ class CVEProviderManager:
 
 
 cve_provider_manager = CVEProviderManager()
-cve_provider_manager.register("nvd", NVDProvider(use_mock=True))
+cve_provider_manager.register("nvd", NVDProvider())

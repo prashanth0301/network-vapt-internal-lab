@@ -6,6 +6,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { VulnerabilityDetailModal } from '../components/VulnerabilityDetailModal';
 import type { Vulnerability } from '../types/vulnerability';
 import { getVulnerabilities, getVulnerabilitySummary } from '../services/vulnerabilityService';
+import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
 
 function severityBadge(severity: string | null): 'danger' | 'warning' | 'info' | 'default' {
   switch (severity) {
@@ -31,11 +32,13 @@ export function Vulnerabilities() {
   const [total, setTotal] = useState(0);
   const perPage = 20;
   const [selectedVulnId, setSelectedVulnId] = useState<string | null>(null);
+  const tick = useAssessmentChangeTick();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const assessmentId = getActiveAssessmentId() ?? undefined;
       const [vulnsRes, summaryRes] = await Promise.all([
         getVulnerabilities(
           severityFilter || undefined,
@@ -46,8 +49,9 @@ export function Vulnerabilities() {
           sortOrder,
           page,
           perPage,
+          assessmentId,
         ),
-        getVulnerabilitySummary(),
+        getVulnerabilitySummary(assessmentId),
       ]);
       setVulns(vulnsRes.data);
       setTotal(vulnsRes.pagination.total);
@@ -58,7 +62,7 @@ export function Vulnerabilities() {
     } finally {
       setLoading(false);
     }
-  }, [severityFilter, search, sortBy, sortOrder, page]);
+  }, [severityFilter, search, sortBy, sortOrder, page, tick]);
 
   useEffect(() => {
     fetchData();
@@ -142,7 +146,7 @@ export function Vulnerabilities() {
         {error && (
           <div className="p-4 mb-4 text-critical bg-critical/10 rounded-lg border border-critical/20 text-sm">
             {error}
-            <Button variant="ghost" size="xs" className="ml-3" onClick={fetchData}>Retry</Button>
+            <Button variant="ghost" size="sm" className="ml-3" onClick={fetchData}>Retry</Button>
           </div>
         )}
 

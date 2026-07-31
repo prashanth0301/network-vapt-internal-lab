@@ -12,7 +12,7 @@ export async function getArtifacts(
   const params: Record<string, string | number> = { page, per_page: perPage, sort_by: sortBy, sort_order: sortOrder };
   if (assessmentId) params.assessment_id = assessmentId;
   if (stageName) params.stage_name = stageName;
-  const res = await apiClient.get('/artifacts', { params });
+  const res = await apiClient.get('/artifacts/', { params });
   return res.data;
 }
 

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -50,7 +51,14 @@ class NmapScanResult:
 
 SCAN_TYPES = {
     "ping_sweep": {
-        "args": ["-sn", "-n"],
+        "args": [
+            "-sn",
+            "-n",
+            "--max-retries", "0",
+            "--max-rtt-timeout", "1000ms",
+            "--min-parallelism", "100",
+            "--host-timeout", "8s",
+        ],
         "description": "ICMP echo, TCP SYN to 443, TCP ACK to 80, ICMP timestamp",
     },
     "arp_scan": {
@@ -106,8 +114,41 @@ SCAN_PROFILES = {
 
 
 def _find_nmap() -> str:
-    for candidate in ["nmap", "/usr/bin/nmap", "/usr/local/bin/nmap"]:
-        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+    found = shutil.which("nmap")
+    if found:
+        return found
+
+    candidates = [
+        r"C:\Program Files (x86)\Nmap\nmap.exe",
+        r"C:\Program Files\Nmap\nmap.exe",
+        r"C:\Tools\Nmap\nmap.exe",
+        r"D:\Nmap\nmap.exe",
+        r"E:\Nmap\nmap.exe",
+        r"F:\Nmap\nmap.exe",
+        "/usr/bin/nmap",
+        "/usr/local/bin/nmap",
+    ]
+
+    try:
+        import winreg
+        for key in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for subkey in (
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Insecure.Nmap",
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Insecure.Nmap",
+            ):
+                try:
+                    with winreg.OpenKey(key, subkey) as k:
+                        install_dir = winreg.QueryValueEx(k, "InstallLocation")[0]
+                        nmap_path = os.path.join(install_dir, "nmap.exe")
+                        if os.path.exists(nmap_path):
+                            return nmap_path
+                except (OSError, FileNotFoundError):
+                    pass
+    except ImportError:
+        pass
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
             return candidate
     return "nmap"
 
@@ -262,6 +303,47 @@ async def run_scan(
 
     start_time = datetime.now(timezone.utc)
 
+    loop = asyncio.get_event_loop()
+
+    def run_sync() -> NmapScanResult:
+        import subprocess
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout,
+            )
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            xml_output = proc.stdout.decode("utf-8", errors="replace") if proc.stdout else ""
+            stderr_output = proc.stderr.decode("utf-8", errors="replace") if proc.stderr else ""
+            if proc.returncode != 0:
+                return NmapScanResult(
+                    scan_type=scan_type, target=target,
+                    error=stderr_output or f"Nmap exited with code {proc.returncode}",
+                    duration_seconds=duration,
+                )
+            hosts = parse_nmap_output(xml_output)
+            return NmapScanResult(
+                scan_type=scan_type, target=target,
+                hosts=hosts, raw_output=xml_output,
+                duration_seconds=duration, completed_at=datetime.now(timezone.utc),
+            )
+        except subprocess.TimeoutExpired:
+            return NmapScanResult(
+                scan_type=scan_type, target=target,
+                error=f"Scan timed out after {timeout} seconds",
+            )
+        except FileNotFoundError:
+            return NmapScanResult(
+                scan_type=scan_type, target=target,
+                error="Nmap executable not found. Install nmap or check PATH.",
+            )
+        except Exception as e:
+            return NmapScanResult(
+                scan_type=scan_type, target=target,
+                error=f"Nmap execution error: {type(e).__name__}: {str(e)}",
+            )
+
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -321,6 +403,12 @@ async def run_scan(
             duration_seconds=duration,
             completed_at=datetime.now(timezone.utc),
         )
+
+    except NotImplementedError:
+        logger.warning(
+            "asyncio subprocess not supported, falling back to synchronous subprocess",
+        )
+        return await loop.run_in_executor(None, run_sync)
 
     except FileNotFoundError:
         error_msg = "Nmap executable not found. Install nmap or check PATH."

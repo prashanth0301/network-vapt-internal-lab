@@ -7,9 +7,13 @@ export interface User {
   status: string;
   last_login: string | null;
   is_active: boolean;
-  permissions: string[];
+  permissions?: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface UserMe extends User {
+  permissions: string[];
 }
 
 export interface LoginRequest {

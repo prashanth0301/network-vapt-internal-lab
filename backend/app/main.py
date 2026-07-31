@@ -98,6 +98,10 @@ def validate_configuration() -> dict:
         errors.append("DATABASE_URL is not set")
     if not settings.CORS_ORIGINS:
         warnings.warn("CORS_ORIGINS is empty - API may be inaccessible from frontend")
+    if settings.JWT_SECRET == "vapt-platform-secret-key-change-in-production":
+        warnings.warn("JWT_SECRET is using default value - set JWT_SECRET environment variable for production")
+    if settings.POSTGRES_PASSWORD == "vaptpassword":
+        warnings.warn("POSTGRES_PASSWORD is using default value - set POSTGRES_PASSWORD environment variable for production")
     return {"valid": len(errors) == 0, "errors": errors}
 
 

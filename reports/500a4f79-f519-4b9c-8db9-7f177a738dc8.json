@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-07-31T12:54:56.539290+00:00",
+  "report_type": "executive",
+  "assessment_id": "a9a82dab-1944-4f8f-a333-c9bd94b177fd",
+  "summary": {
+    "total_hosts": 2,
+    "alive_hosts": 2,
+    "total_vulnerabilities": 0,
+    "severity_counts": {
+      "Critical": 0,
+      "High": 0,
+      "Medium": 0,
+      "Low": 0,
+      "Info": 0
+    }
+  },
+  "hosts": [
+    {
+      "ip": "192.168.0.104",
+      "hostname": null,
+      "os": null,
+      "status": "up",
+      "is_alive": true
+    },
+    {
+      "ip": "192.168.0.1",
+      "hostname": null,
+      "os": null,
+      "status": "up",
+      "is_alive": true
+    }
+  ],
+  "findings": []
+}

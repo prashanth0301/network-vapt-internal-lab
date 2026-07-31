@@ -1,0 +1,223 @@
+{
+  "status": "completed",
+  "total_services": 17,
+  "total_enriched": 17,
+  "categories": {
+    "Other": 10,
+    "File Sharing": 2,
+    "Database": 2,
+    "Mail": 3
+  },
+  "confidence_distribution": {
+    "high": 0,
+    "medium": 17,
+    "low": 0,
+    "unknown": 0
+  },
+  "services": [
+    {
+      "id": "a5b83550-b9c6-4b20-adb0-83fdddef4ae5",
+      "name": "msrpc",
+      "normalized_name": "msrpc",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "95046a5c-822e-428b-8307-df6e0a66cded",
+      "name": "netbios-ssn",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'netbios-ssn' to 'SMB'"
+    },
+    {
+      "id": "3723aa92-ac76-48ab-a893-d6ec6270ffa9",
+      "name": "microsoft-ds",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'microsoft-ds' to 'SMB'"
+    },
+    {
+      "id": "9168342c-f579-4bb1-9735-8658a522bfb4",
+      "name": "iss-realsecure",
+      "normalized_name": "iss-realsecure",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "1782d56e-f22a-45e6-9ca0-a4503625ff4f",
+      "name": "apex-mesh",
+      "normalized_name": "apex-mesh",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "30bae81d-2491-4659-9d3f-5e9a1d36de7c",
+      "name": "mysql",
+      "normalized_name": "MySQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'mysql' to 'MySQL'"
+    },
+    {
+      "id": "b554560a-8838-4623-a31a-ebdf16b6f2bf",
+      "name": "wsdapi",
+      "normalized_name": "wsdapi",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "b0e12aa3-5014-4b39-807c-36b0086ec514",
+      "name": "postgresql",
+      "normalized_name": "PostgreSQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'postgresql' to 'PostgreSQL'"
+    },
+    {
+      "id": "5e58438c-22b8-4ee4-997f-c4cdfba19cd8",
+      "name": "smtp",
+      "normalized_name": "SMTP",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Mail",
+      "confidence": 85,
+      "notes": "Normalized from 'smtp' to 'SMTP'"
+    },
+    {
+      "id": "bec14ee1-0521-49d7-a7fc-15eacc4c0ac6",
+      "name": "pop3",
+      "normalized_name": "POP3",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Mail",
+      "confidence": 85,
+      "notes": "Normalized from 'pop3' to 'POP3'"
+    },
+    {
+      "id": "6b5ab412-5e27-4497-a9eb-e2063e36879e",
+      "name": "nntp",
+      "normalized_name": "nntp",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "fa8eace0-b10b-4639-9673-5db25fac46cc",
+      "name": "imap",
+      "normalized_name": "IMAP",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Mail",
+      "confidence": 85,
+      "notes": "Normalized from 'imap' to 'IMAP'"
+    },
+    {
+      "id": "151a3674-419b-479b-a37b-6afb2b05bbfd",
+      "name": "smtps",
+      "normalized_name": "smtps",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "df29b66e-05e6-4006-8830-ef7ba37b9005",
+      "name": "snews",
+      "normalized_name": "snews",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "0bca9250-8fe6-4e5b-9d9b-adffb46b4cc4",
+      "name": "submission",
+      "normalized_name": "submission",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "b435f0f0-5c6e-46a9-bc86-3e09cf1d13b5",
+      "name": "imaps",
+      "normalized_name": "imaps",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "f9c8d1a3-a0a3-4461-99b3-429b7e5765a2",
+      "name": "pop3s",
+      "normalized_name": "pop3s",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    }
+  ]
+}

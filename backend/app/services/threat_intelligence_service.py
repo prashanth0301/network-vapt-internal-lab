@@ -155,35 +155,46 @@ async def get_all_cves(
     sort_by: str = "cvss_score",
     sort_order: str = "desc",
     kev_only: bool = False,
+    assessment_id: Optional[str] = None,
 ) -> tuple[list[CVE], int]:
     query = select(CVE)
+    count_query = select(CVE.id).select_from(CVE)
+
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return [], 0
+        query = query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+        query = query.where(Vulnerability.scan_id == aid)
+        count_query = (
+            count_query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+            .where(Vulnerability.scan_id == aid)
+        )
 
     if severity:
         query = query.where(CVE.cvss_severity == severity)
+        count_query = count_query.where(CVE.cvss_severity == severity)
     if vendor:
         query = query.where(CVE.vendor.ilike(f"%{vendor}%"))
+        count_query = count_query.where(CVE.vendor.ilike(f"%{vendor}%"))
     if product:
         query = query.where(CVE.product.ilike(f"%{product}%"))
+        count_query = count_query.where(CVE.product.ilike(f"%{product}%"))
     if year:
         query = query.where(CVE.cve_id.like(f"CVE-{year}-%"))
+        count_query = count_query.where(CVE.cve_id.like(f"CVE-{year}-%"))
     if search:
         query = query.where(
             CVE.description.ilike(f"%{search}%")
             | CVE.cve_id.ilike(f"%{search}%")
         )
+        count_query = count_query.where(
+            CVE.description.ilike(f"%{search}%")
+            | CVE.cve_id.ilike(f"%{search}%")
+        )
     if kev_only:
         query = query.where(CVE.kev_status == True)
-
-    count_query = select(CVE.id).select_from(CVE)
-    if severity:
-        count_query = count_query.where(CVE.cvss_severity == severity)
-    if vendor:
-        count_query = count_query.where(CVE.vendor.ilike(f"%{vendor}%"))
-    if product:
-        count_query = count_query.where(CVE.product.ilike(f"%{product}%"))
-    if year:
-        count_query = count_query.where(CVE.cve_id.like(f"CVE-{year}-%"))
-    if kev_only:
         count_query = count_query.where(CVE.kev_status == True)
 
     total_result = await session.execute(count_query)
@@ -238,8 +249,26 @@ async def get_cves_by_vulnerability(
     return list(result.scalars().all())
 
 
-async def get_cve_statistics(session: AsyncSession) -> dict:
-    result = await session.execute(select(CVE))
+async def get_cve_statistics(
+    session: AsyncSession,
+    assessment_id: Optional[str] = None,
+) -> dict:
+    query = select(CVE)
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return {
+                "total_cves": 0,
+                "severity_counts": {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0},
+                "kev_count": 0,
+                "average_cvss": 0.0,
+                "average_epss": 0.0,
+                "top_vendors": [],
+            }
+        query = query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+        query = query.where(Vulnerability.scan_id == aid)
+    result = await session.execute(query)
     all_cves = list(result.scalars().all())
 
     total = len(all_cves)
@@ -281,11 +310,19 @@ async def get_cve_statistics(session: AsyncSession) -> dict:
 
 
 async def get_high_risk_cves(
-    session: AsyncSession, limit: int = 20
+    session: AsyncSession,
+    limit: int = 20,
+    assessment_id: Optional[str] = None,
 ) -> list[CVE]:
+    query = select(CVE).where(CVE.cvss_score >= 7.0)
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return []
+        query = query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+        query = query.where(Vulnerability.scan_id == aid)
     result = await session.execute(
-        select(CVE).where(CVE.cvss_score >= 7.0)
-        .order_by(CVE.cvss_score.desc().nullslast())
-        .limit(limit)
+        query.order_by(CVE.cvss_score.desc().nullslast()).limit(limit)
     )
     return list(result.scalars().all())

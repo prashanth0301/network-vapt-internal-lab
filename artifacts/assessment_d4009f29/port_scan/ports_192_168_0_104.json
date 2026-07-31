@@ -1,0 +1,53 @@
+{
+  "host": "192.168.0.104",
+  "ports": [
+    {
+      "port": 135,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "msrpc",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 139,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "netbios-ssn",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 445,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "microsoft-ds",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 3306,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "mysql",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 5357,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "wsdapi",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 5432,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "postgresql",
+      "product": null,
+      "version": null
+    }
+  ]
+}

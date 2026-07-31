@@ -43,7 +43,7 @@ class TestAssessmentPipeline:
         pipeline = AssessmentPipeline()
         assert len(pipeline.stages) == 6
         assert pipeline.stages[0].name == "host_discovery"
-        assert pipeline.stages[-1].name == "report"
+        assert pipeline.stages[-1].name == "exploit_verification"
 
     def test_pipeline_total_weight(self):
         pipeline = AssessmentPipeline()
@@ -54,8 +54,8 @@ class TestAssessmentPipeline:
         ordered = pipeline.get_execution_order()
         names = [s.name for s in ordered]
         assert names == [
-            "host_discovery", "port_scan", "service_enum",
-            "vuln_scan", "cve_intel", "report",
+            "host_discovery", "port_scan", "service_intelligence",
+            "vulnerability_assessment", "cve_intelligence", "exploit_verification",
         ]
 
     def test_duplicate_stage_raises_error(self):

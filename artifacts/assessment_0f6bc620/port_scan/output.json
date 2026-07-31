@@ -1,0 +1,43 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_connect",
+  "target": "172.18.13.77",
+  "total_hosts_scanned": 6,
+  "total_ports_found": 49,
+  "total_services_found": 48,
+  "scan_details": [
+    {
+      "host": "172.18.13.2",
+      "ports_found": 15,
+      "services_found": 14,
+      "duration_seconds": 43.449737
+    },
+    {
+      "host": "172.18.13.68",
+      "ports_found": 10,
+      "services_found": 10,
+      "duration_seconds": 41.210545
+    },
+    {
+      "host": "172.18.13.77",
+      "ports_found": 17,
+      "services_found": 17,
+      "duration_seconds": 6.542365
+    },
+    {
+      "host": "192.168.0.1",
+      "ports_found": 0
+    },
+    {
+      "host": "192.168.0.104",
+      "ports_found": 7,
+      "services_found": 7,
+      "duration_seconds": 6.951533
+    },
+    {
+      "host": "192.168.0.101",
+      "ports_found": 0
+    }
+  ],
+  "errors": []
+}

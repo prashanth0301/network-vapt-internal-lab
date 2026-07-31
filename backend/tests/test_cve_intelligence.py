@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.models.cve import CVE
@@ -22,6 +23,95 @@ from app.services.threat_intelligence_service import (
     normalize_cve_result,
     threat_cache,
 )
+
+
+def nvd_payload(
+    cve_id: str,
+    score: float = 7.5,
+    severity: str = "High",
+    vendor: str = "apache",
+    product: str = "http_server",
+    version: str = "2.4.49",
+    cwe: str = "CWE-22",
+) -> dict:
+    return {
+        "vulnerabilities": [
+            {
+                "cve": {
+                    "id": cve_id,
+                    "descriptions": [
+                        {"lang": "en", "value": f"Description for {cve_id}"}
+                    ],
+                    "published": "2021-09-15T12:00:00.000",
+                    "lastModified": "2021-09-20T12:00:00.000",
+                    "weaknesses": [
+                        {"description": [{"lang": "en", "value": cwe}]}
+                    ],
+                    "references": [{"url": f"https://example.com/{cve_id}"}],
+                    "metrics": {
+                        "cvssMetricV31": [
+                            {
+                                "cvssData": {
+                                    "baseScore": score,
+                                    "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                                    "baseSeverity": severity,
+                                    "exploitabilityScore": 3.9,
+                                    "impactScore": 3.6,
+                                }
+                            }
+                        ]
+                    },
+                    "configurations": [
+                        {
+                            "nodes": [
+                                {
+                                    "operator": "OR",
+                                    "cpeMatch": [
+                                        {
+                                            "criteria": (
+                                                f"cpe:2.3:a:{vendor}:{product}:{version}"
+                                                ":*:*:*:*:*:*:*:*"
+                                            )
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ],
+                }
+            }
+        ],
+        "resultsPerPage": 1,
+        "startIndex": 0,
+        "totalResults": 1,
+    }
+
+
+def fake_nvd_get(cve_scores: dict[str, tuple[float, str]]) -> AsyncMock:
+    async def _get(url: str, params: dict | None = None, headers: dict | None = None):
+        if "epss" in url:
+            cve = (params or {}).get("cve")
+            return MagicMock(
+                status_code=200,
+                json=lambda: {"data": [{"cve": cve, "epss": 0.974}]},
+            )
+        if "known_exploited" in url:
+            return MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "vulnerabilities": [
+                        {"cveID": "CVE-2021-44228"},
+                        {"cveID": "CVE-2021-41773"},
+                    ]
+                },
+            )
+        cve_id = (params or {}).get("cveId", "CVE-2021-41773")
+        if cve_id in cve_scores:
+            score, severity = cve_scores[cve_id]
+            return MagicMock(status_code=200, json=lambda: nvd_payload(cve_id, score, severity))
+        return MagicMock(status_code=200, json=lambda: {"vulnerabilities": []})
+
+    return AsyncMock(side_effect=_get)
 
 
 def _make_cve(**kwargs) -> CVE:
@@ -69,77 +159,89 @@ class TestCVEProviderAbstraction:
 
     @pytest.mark.asyncio
     async def test_nvd_connect(self):
-        p = NVDProvider()
-        result = await p.connect()
-        assert result is True
-        assert p.is_connected() is True
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            result = await p.connect()
+            assert result is True
+            assert p.is_connected() is True
 
     @pytest.mark.asyncio
     async def test_nvd_disconnect(self):
-        p = NVDProvider()
-        await p.connect()
-        result = await p.disconnect()
-        assert result is True
-        assert p.is_connected() is False
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            await p.connect()
+            result = await p.disconnect()
+            assert result is True
+            assert p.is_connected() is False
 
     @pytest.mark.asyncio
     async def test_nvd_health(self):
-        p = NVDProvider()
-        await p.connect()
-        status = await p.health()
-        assert status.name == "NVD"
-        assert status.connected is True
-        assert status.healthy is True
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            await p.connect()
+            status = await p.health()
+            assert status.name == "NVD"
+            assert status.connected is True
+            assert status.healthy is True
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_cve_found(self):
-        p = NVDProvider()
-        result = await p.lookup_cve("CVE-2021-41773")
-        assert result is not None
-        assert result.cve_id == "CVE-2021-41773"
-        assert result.cvss_score == 7.5
-        assert result.cvss_severity == "High"
-        assert result.epss_score == 0.974
-        assert result.kev_status is True
-        assert result.vendor == "Apache"
-        assert result.product == "HTTP Server"
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({"CVE-2021-41773": (7.5, "High")})):
+            p = NVDProvider()
+            result = await p.lookup_cve("CVE-2021-41773")
+            assert result is not None
+            assert result.cve_id == "CVE-2021-41773"
+            assert result.cvss_score == 7.5
+            assert result.cvss_severity == "High"
+            assert result.epss_score == 0.974
+            assert result.kev_status is True
+            assert result.vendor == "apache"
+            assert result.product == "http_server"
+            assert result.affected_versions == ["2.4.49"]
+            assert result.cwe_id == "CWE-22"
+            assert result.reference_urls == ["https://example.com/CVE-2021-41773"]
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_cve_not_found(self):
-        p = NVDProvider()
-        result = await p.lookup_cve("CVE-2099-9999")
-        assert result is None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            result = await p.lookup_cve("CVE-2099-9999")
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_cve_invalid_format(self):
-        p = NVDProvider()
-        result = await p.lookup_cve("INVALID")
-        assert result is None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            result = await p.lookup_cve("INVALID")
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_multiple(self):
-        p = NVDProvider()
-        results = await p.lookup_multiple(["CVE-2021-41773", "CVE-2099-9999", "INVALID"])
-        assert results["CVE-2021-41773"] is not None
-        assert results["CVE-2099-9999"] is None
-        assert results["INVALID"] is None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({"CVE-2021-41773": (7.5, "High")})):
+            p = NVDProvider()
+            results = await p.lookup_multiple(["CVE-2021-41773", "CVE-2099-9999", "INVALID"])
+            assert results["CVE-2021-41773"] is not None
+            assert results["CVE-2099-9999"] is None
+            assert results["INVALID"] is None
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_log4j(self):
-        p = NVDProvider()
-        result = await p.lookup_cve("CVE-2021-44228")
-        assert result is not None
-        assert result.cvss_score == 10.0
-        assert result.kev_status is True
-        assert result.vendor == "Apache"
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({"CVE-2021-44228": (10.0, "Critical")})):
+            p = NVDProvider()
+            result = await p.lookup_cve("CVE-2021-44228")
+            assert result is not None
+            assert result.cvss_score == 10.0
+            assert result.kev_status is True
 
     @pytest.mark.asyncio
     async def test_nvd_lookup_smbghost(self):
-        p = NVDProvider()
-        result = await p.lookup_cve("CVE-2020-0796")
-        assert result is not None
-        assert result.cvss_score == 10.0
-        assert result.vendor == "Microsoft"
+        with patch.object(
+            httpx.AsyncClient, "get", fake_nvd_get({"CVE-2020-0796": (10.0, "Critical")})
+        ):
+            p = NVDProvider()
+            result = await p.lookup_cve("CVE-2020-0796")
+            assert result is not None
+            assert result.cvss_score == 10.0
 
 
 class TestCVEProviderManager:
@@ -167,56 +269,67 @@ class TestCVEProviderManager:
 
     @pytest.mark.asyncio
     async def test_connect_all(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        results = await self.manager.connect_all()
-        assert results["nvd"] is True
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            results = await self.manager.connect_all()
+            assert results["nvd"] is True
 
     @pytest.mark.asyncio
     async def test_disconnect_all(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        await self.manager.connect_all()
-        results = await self.manager.disconnect_all()
-        assert results["nvd"] is True
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            await self.manager.connect_all()
+            results = await self.manager.disconnect_all()
+            assert results["nvd"] is True
 
     @pytest.mark.asyncio
     async def test_health_all(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        await p.connect()
-        statuses = await self.manager.health_all()
-        assert "nvd" in statuses
-        assert statuses["nvd"].name == "NVD"
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            await p.connect()
+            statuses = await self.manager.health_all()
+            assert "nvd" in statuses
+            assert statuses["nvd"].name == "NVD"
 
     @pytest.mark.asyncio
     async def test_lookup_cve_all_providers(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        result = await self.manager.lookup_cve("CVE-2021-41773")
-        assert result is not None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({"CVE-2021-41773": (7.5, "High")})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            result = await self.manager.lookup_cve("CVE-2021-41773")
+            assert result is not None
 
     @pytest.mark.asyncio
     async def test_lookup_cve_specific_provider(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        result = await self.manager.lookup_cve("CVE-2021-41773", provider_name="nvd")
-        assert result is not None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({"CVE-2021-41773": (7.5, "High")})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            result = await self.manager.lookup_cve("CVE-2021-41773", provider_name="nvd")
+            assert result is not None
 
     @pytest.mark.asyncio
     async def test_lookup_cve_unknown_provider(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        result = await self.manager.lookup_cve("CVE-2021-41773", provider_name="unknown")
-        assert result is None
+        with patch.object(httpx.AsyncClient, "get", fake_nvd_get({})):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            result = await self.manager.lookup_cve("CVE-2021-41773", provider_name="unknown")
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_lookup_multiple(self):
-        p = NVDProvider()
-        self.manager.register("nvd", p)
-        results = await self.manager.lookup_multiple(["CVE-2021-41773", "CVE-2021-44228"])
-        assert results["CVE-2021-41773"] is not None
-        assert results["CVE-2021-44228"] is not None
+        with patch.object(
+            httpx.AsyncClient,
+            "get",
+            fake_nvd_get({"CVE-2021-41773": (7.5, "High"), "CVE-2021-44228": (10.0, "Critical")}),
+        ):
+            p = NVDProvider()
+            self.manager.register("nvd", p)
+            results = await self.manager.lookup_multiple(["CVE-2021-41773", "CVE-2021-44228"])
+            assert results["CVE-2021-41773"] is not None
+            assert results["CVE-2021-44228"] is not None
 
     def test_global_manager_has_nvd(self):
         assert "nvd" in cve_provider_manager.list_providers()
@@ -414,12 +527,24 @@ class TestEnrichCVE:
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
         mock_session.flush = AsyncMock()
 
-        vuln_id = uuid.uuid4()
-        result = await enrich_cve(mock_session, vuln_id, "CVE-2021-41773")
-        assert result is not None
-        assert result.cve_id == "CVE-2021-41773"
-        assert result.vuln_id == vuln_id
-        assert result.cvss_score == 7.5
+        canned = CVEResult(
+            cve_id="CVE-2021-41773",
+            cvss_score=7.5,
+            cvss_severity="High",
+            epss_score=0.974,
+            kev_status=True,
+            source="NVD",
+        )
+        with patch(
+            "app.services.threat_intelligence_service.cve_provider_manager.lookup_cve",
+            new=AsyncMock(return_value=canned),
+        ):
+            vuln_id = uuid.uuid4()
+            result = await enrich_cve(mock_session, vuln_id, "CVE-2021-41773")
+            assert result is not None
+            assert result.cve_id == "CVE-2021-41773"
+            assert result.vuln_id == vuln_id
+            assert result.cvss_score == 7.5
 
     @pytest.mark.asyncio
     async def test_enrich_cve_not_found(self):
@@ -428,8 +553,12 @@ class TestEnrichCVE:
         mock_session.execute.return_value = MagicMock()
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
 
-        result = await enrich_cve(mock_session, uuid.uuid4(), "CVE-2099-9999")
-        assert result is None
+        with patch(
+            "app.services.threat_intelligence_service.cve_provider_manager.lookup_cve",
+            new=AsyncMock(return_value=None),
+        ):
+            result = await enrich_cve(mock_session, uuid.uuid4(), "CVE-2099-9999")
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_enrich_vulnerability_cves(self):
@@ -439,12 +568,17 @@ class TestEnrichCVE:
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
         mock_session.flush = AsyncMock()
 
-        vuln = MagicMock(spec=Vulnerability)
-        vuln.id = uuid.uuid4()
-        vuln.cve_ids = ["CVE-2021-41773"]
+        canned = CVEResult(cve_id="CVE-2021-41773", cvss_score=7.5, source="NVD")
+        with patch(
+            "app.services.threat_intelligence_service.cve_provider_manager.lookup_cve",
+            new=AsyncMock(return_value=canned),
+        ):
+            vuln = MagicMock(spec=Vulnerability)
+            vuln.id = uuid.uuid4()
+            vuln.cve_ids = ["CVE-2021-41773"]
 
-        count = await enrich_vulnerability_cves(mock_session, vuln)
-        assert count == 1
+            count = await enrich_vulnerability_cves(mock_session, vuln)
+            assert count == 1
 
     @pytest.mark.asyncio
     async def test_enrich_vulnerability_no_cves(self):

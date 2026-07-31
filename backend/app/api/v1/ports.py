@@ -23,12 +23,14 @@ router = APIRouter(prefix="/ports", tags=["Ports"])
 async def list_ports(
     state: Optional[str] = Query(None, description="Filter by port state"),
     protocol: Optional[str] = Query(None, description="Filter by protocol (tcp/udp)"),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     ports, total = await get_all_ports(
-        session=db, page=page, per_page=per_page, state=state, protocol=protocol
+        session=db, page=page, per_page=per_page, state=state, protocol=protocol,
+        assessment_id=assessment_id,
     )
     items = [_port_to_response(p) for p in ports]
     return SuccessResponse(data=items, message=f"Found {total} ports")
@@ -81,11 +83,19 @@ async def start_port_scan(
             "extra_args": body.extra_args,
         },
     )
+    await assessment_manager.persist_assessment(assessment.id)
 
     logger.info(
-        "Created port scan assessment: {id} for target {target}",
+        "Assessment created: {id} - Port Scan for target {target}",
         id=assessment.id,
         target=body.target,
+    )
+
+    record = await assessment_manager.start_assessment(assessment.id)
+    await assessment_manager.persist_assessment(assessment.id)
+    logger.info(
+        "Assessment started: {id} - Port Scan pipeline launched",
+        id=assessment.id,
     )
 
     return SuccessResponse(
@@ -94,8 +104,7 @@ async def start_port_scan(
             "target": body.target,
             "scan_type": body.scan_type,
             "scan_profile": body.scan_profile,
-            "status": assessment.status.value,
-            "message": "Port scan assessment created. Use GET /assessments/{id} to track progress.",
+            "status": record.status.value,
         },
         message="Port scan initiated",
     )

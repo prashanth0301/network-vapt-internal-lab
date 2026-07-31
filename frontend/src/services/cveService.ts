@@ -13,6 +13,7 @@ export async function getCVEs(
   sortOrder = 'desc',
   page = 1,
   perPage = 20,
+  assessmentId?: string,
 ): Promise<PaginatedResponse<CVE>> {
   const params = new URLSearchParams();
   if (severity) params.set('severity', severity);
@@ -21,6 +22,7 @@ export async function getCVEs(
   if (year) params.set('year', String(year));
   if (search) params.set('search', search);
   if (kevOnly) params.set('kev_only', 'true');
+  if (assessmentId) params.set('assessment_id', assessmentId);
   params.set('sort_by', sortBy);
   params.set('sort_order', sortOrder);
   params.set('page', String(page));
@@ -44,12 +46,17 @@ export async function getCVEsByVulnerability(vulnId: string): Promise<ApiRespons
   return response.data;
 }
 
-export async function getHighRiskCVEs(limit = 20): Promise<ApiResponse<CVE[]>> {
-  const response = await apiClient.get<ApiResponse<CVE[]>>(`/cves/high-risk?limit=${limit}`);
+export async function getHighRiskCVEs(limit = 20, assessmentId?: string): Promise<ApiResponse<CVE[]>> {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  if (assessmentId) params.set('assessment_id', assessmentId);
+  const response = await apiClient.get<ApiResponse<CVE[]>>(`/cves/high-risk?${params}`);
   return response.data;
 }
 
-export async function getCVEStatistics(): Promise<ApiResponse<CVEStatistics>> {
-  const response = await apiClient.get<ApiResponse<CVEStatistics>>('/cves/statistics');
+export async function getCVEStatistics(assessmentId?: string): Promise<ApiResponse<CVEStatistics>> {
+  const params = new URLSearchParams();
+  if (assessmentId) params.set('assessment_id', assessmentId);
+  const response = await apiClient.get<ApiResponse<CVEStatistics>>(`/cves/statistics?${params}`);
   return response.data;
 }

@@ -43,6 +43,7 @@ async def create_assessment(
         target=body.target,
         parameters=body.parameters,
     )
+    await assessment_manager.persist_assessment(record.id)
     return SuccessResponse(
         data=AssessmentResponse(
             id=record.id,
@@ -72,7 +73,7 @@ async def list_assessments(
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     db=Depends(get_db),
 ):
-    records, total = assessment_manager.list_assessments(
+    records, total = await assessment_manager.list_assessments_persisted(
         status=status,
         scan_type=scan_type,
         page=page,
@@ -111,7 +112,9 @@ async def get_assessment(
     assessment_id: str,
     db=Depends(get_db),
 ):
-    status_data = assessment_manager.get_assessment_status(assessment_id)
+    status_data = await assessment_manager.get_assessment_status_persisted(
+        assessment_id
+    )
 
     progress_data = status_data.get("progress")
     pipeline_data = status_data.get("pipeline")
@@ -175,6 +178,7 @@ async def start_assessment(
     db=Depends(get_db),
 ):
     record = await assessment_manager.start_assessment(assessment_id)
+    await assessment_manager.persist_assessment(assessment_id)
     return SuccessResponse(
         data=AssessmentResponse(
             id=record.id,
@@ -205,6 +209,7 @@ async def cancel_assessment(
     db=Depends(get_db),
 ):
     record = assessment_manager.cancel_assessment(assessment_id)
+    await assessment_manager.persist_assessment(assessment_id)
     return SuccessResponse(
         data=AssessmentResponse(
             id=record.id,
@@ -237,6 +242,7 @@ async def delete_assessment(
     deleted = assessment_manager.delete_assessment(assessment_id)
     if not deleted:
         raise AssessmentNotFoundError(assessment_id)
+    await assessment_manager.remove_persisted(assessment_id)
     return SuccessResponse(
         data={"id": assessment_id},
         message="Assessment deleted",

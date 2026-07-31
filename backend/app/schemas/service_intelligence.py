@@ -34,3 +34,4 @@ class ServiceIntelligenceResponse(BaseModel):
 
 class ServiceEnrichRequest(BaseModel):
     service_ids: Optional[list[uuid.UUID]] = Field(None, description="Specific service IDs to enrich. If empty, all unenriched services are processed.")
+    assessment_id: Optional[uuid.UUID] = Field(None, description="Scope bulk enrichment to a specific assessment")

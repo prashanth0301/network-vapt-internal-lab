@@ -19,6 +19,7 @@ async def list_cves(
     year: Optional[int] = Query(None, description="Filter by CVE year"),
     search: Optional[str] = Query(None, description="Search in CVE ID and description"),
     kev_only: bool = Query(False, description="Show only KEV CVEs"),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     sort_by: str = Query("cvss_score", description="Sort field"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -39,6 +40,7 @@ async def list_cves(
         sort_by=sort_by,
         sort_order=sort_order,
         kev_only=kev_only,
+        assessment_id=assessment_id,
     )
     items = [_cve_to_response(c) for c in cves]
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -60,17 +62,28 @@ async def search_cves(
     return SuccessResponse(data=items, message=f"Found {len(items)} CVEs")
 
 
-@router.get("/{cve_id}", response_model=SuccessResponse[CVEResponse])
-async def get_cve(
-    cve_id: str,
+@router.get("/high-risk", response_model=SuccessResponse[list[CVEResponse]])
+async def list_high_risk_cves(
+    limit: int = Query(20, ge=1, le=100),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.threat_intelligence_service import get_cve_by_id
+    from app.services.threat_intelligence_service import get_high_risk_cves
 
-    cve = await get_cve_by_id(db, cve_id)
-    if not cve:
-        return SuccessResponse(data=None, message=f"CVE '{cve_id}' not found")
-    return SuccessResponse(data=_cve_to_response(cve), message="CVE retrieved")
+    cves = await get_high_risk_cves(db, limit=limit, assessment_id=assessment_id)
+    items = [_cve_to_response(c) for c in cves]
+    return SuccessResponse(data=items, message=f"Found {len(items)} high-risk CVEs")
+
+
+@router.get("/statistics", response_model=SuccessResponse[CVEStatisticsResponse])
+async def cve_statistics(
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.threat_intelligence_service import get_cve_statistics
+
+    stats = await get_cve_statistics(db, assessment_id)
+    return SuccessResponse(data=stats, message="CVE statistics retrieved")
 
 
 @router.get("/by-vulnerability/{vuln_id}", response_model=SuccessResponse[list[CVEResponse]])
@@ -85,26 +98,17 @@ async def list_cves_by_vulnerability(
     return SuccessResponse(data=items, message=f"Found {len(items)} CVEs for vulnerability")
 
 
-@router.get("/high-risk", response_model=SuccessResponse[list[CVEResponse]])
-async def list_high_risk_cves(
-    limit: int = Query(20, ge=1, le=100),
+@router.get("/{cve_id}", response_model=SuccessResponse[CVEResponse])
+async def get_cve(
+    cve_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.threat_intelligence_service import get_high_risk_cves
+    from app.services.threat_intelligence_service import get_cve_by_id
 
-    cves = await get_high_risk_cves(db, limit=limit)
-    items = [_cve_to_response(c) for c in cves]
-    return SuccessResponse(data=items, message=f"Found {len(items)} high-risk CVEs")
-
-
-@router.get("/statistics", response_model=SuccessResponse[CVEStatisticsResponse])
-async def cve_statistics(
-    db: AsyncSession = Depends(get_db),
-):
-    from app.services.threat_intelligence_service import get_cve_statistics
-
-    stats = await get_cve_statistics(db)
-    return SuccessResponse(data=stats, message="CVE statistics retrieved")
+    cve = await get_cve_by_id(db, cve_id)
+    if not cve:
+        return SuccessResponse(data=None, message=f"CVE '{cve_id}' not found")
+    return SuccessResponse(data=_cve_to_response(cve), message="CVE retrieved")
 
 
 def _cve_to_response(cve) -> CVEResponse:

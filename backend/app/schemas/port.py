@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ServiceResponse(BaseModel):
@@ -38,7 +38,8 @@ class PortScanRequest(BaseModel):
     target: str = Field(..., min_length=1, description="Target IP address or CIDR range")
     scan_type: str = Field(
         default="tcp_syn",
-        pattern="^(tcp_syn|tcp_connect|udp_scan|version_detection)$",
+        pattern="^(tcp_syn|tcp_connect|udp_scan)$",
+        description="Port scan type: tcp_syn (-sS), tcp_connect (-sT), udp_scan (-sU)",
     )
     scan_profile: str = Field(
         default="top_ports",
@@ -46,3 +47,11 @@ class PortScanRequest(BaseModel):
     )
     ports: Optional[str] = Field(None, description="Port range for custom_range profile (e.g. '22,80,443' or '1-1024')")
     extra_args: Optional[list[str]] = Field(None, description="Extra Nmap arguments")
+
+    @model_validator(mode="after")
+    def validate_profile_ports(self):
+        if self.scan_profile == "custom_range" and not self.ports:
+            raise ValueError("Ports are required when scan_profile is 'custom_range'")
+        if self.ports and not self.ports.replace(",", "").replace("-", "").isdigit():
+            raise ValueError("Ports must be a comma-separated list or range of numbers (e.g. '22,80,443' or '1-1024')")
+        return self

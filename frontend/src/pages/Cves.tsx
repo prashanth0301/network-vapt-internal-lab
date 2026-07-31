@@ -6,6 +6,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { CVEDetailModal } from '../components/CVEDetailModal';
 import type { CVE, CVEStatistics } from '../types/cve';
 import { getCVEs, getCVEStatistics } from '../services/cveService';
+import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
 
 const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 const severityColors: Record<string, string> = {
@@ -38,15 +39,17 @@ export function Cves() {
   const [total, setTotal] = useState(0);
   const [selectedCveId, setSelectedCveId] = useState<string | null>(null);
   const perPage = 20;
+  const tick = useAssessmentChangeTick();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const assessmentId = getActiveAssessmentId() ?? undefined;
       const [cvesRes, statsRes] = await Promise.all([
         getCVEs(
           severityFilter || undefined,
-          undefined,
+          vendorFilter || undefined,
           undefined,
           undefined,
           search || undefined,
@@ -55,8 +58,9 @@ export function Cves() {
           sortOrder,
           page,
           perPage,
+          assessmentId,
         ),
-        getCVEStatistics(),
+        getCVEStatistics(assessmentId),
       ]);
       setCves(cvesRes.data);
       setTotal(cvesRes.pagination.total);
@@ -67,11 +71,11 @@ export function Cves() {
     } finally {
       setLoading(false);
     }
-  }, [severityFilter, search, kevOnly, sortBy, sortOrder, page]);
+  }, [severityFilter, vendorFilter, search, kevOnly, sortBy, sortOrder, page, tick]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => { setPage(1); }, [search, severityFilter, kevOnly, sortBy, sortOrder]);
+  useEffect(() => { setPage(1); }, [search, severityFilter, vendorFilter, kevOnly, sortBy, sortOrder]);
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -157,7 +161,7 @@ export function Cves() {
         {error && (
           <div className="p-4 mb-4 text-critical bg-critical/10 rounded-lg border border-critical/20 text-sm">
             {error}
-            <Button variant="ghost" size="xs" className="ml-3" onClick={fetchData}>Retry</Button>
+            <Button variant="ghost" size="sm" className="ml-3" onClick={fetchData}>Retry</Button>
           </div>
         )}
 
@@ -165,7 +169,7 @@ export function Cves() {
           <LoadingSpinner size="md" text="Loading CVE intelligence..." />
         ) : cves.length === 0 ? (
           <div className="text-center py-12 text-surface-400">
-            <p className="text-lg font-medium mb-1">No CVEs found</p>
+            <p className="text-lg font-medium mb-1">No CVEs available</p>
             <p className="text-sm">Run the CVE intelligence stage to enrich vulnerability findings.</p>
           </div>
         ) : (

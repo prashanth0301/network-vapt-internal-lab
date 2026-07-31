@@ -1,9 +1,13 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from loguru import logger
+from sqlalchemy import select
 
+from app.core.database import async_session_factory
+from app.models.scan import Scan
 from app.services.assessment.exceptions import (
     AssessmentAlreadyRunningError,
     AssessmentInvalidTransitionError,
@@ -33,7 +37,7 @@ FULL_ASSESSMENT_STAGES = [
         depends_on=["host_discovery"],
     ),
     PipelineStage(
-        name="service_enum",
+        name="service_intelligence",
         display_name="Service Enumeration",
         description="Enumerate service versions and banners",
         weight=15.0,
@@ -41,28 +45,28 @@ FULL_ASSESSMENT_STAGES = [
         depends_on=["port_scan"],
     ),
     PipelineStage(
-        name="vuln_scan",
+        name="vulnerability_assessment",
         display_name="Vulnerability Assessment",
         description="Scan for vulnerabilities using OpenVAS/Nessus",
         weight=30.0,
         order=4,
-        depends_on=["service_enum"],
+        depends_on=["service_intelligence"],
     ),
     PipelineStage(
-        name="cve_intel",
+        name="cve_intelligence",
         display_name="CVE Intelligence",
         description="Correlate findings with CVE database",
         weight=10.0,
         order=5,
-        depends_on=["vuln_scan"],
+        depends_on=["vulnerability_assessment"],
     ),
     PipelineStage(
-        name="report",
-        display_name="Report Generation",
-        description="Generate assessment reports",
+        name="exploit_verification",
+        display_name="Exploit Verification",
+        description="Verify exploits against discovered vulnerabilities",
         weight=10.0,
         order=6,
-        depends_on=["cve_intel"],
+        depends_on=["cve_intelligence"],
     ),
 ]
 
@@ -82,6 +86,28 @@ PORT_SCAN_STAGES = [
         name="port_scan",
         display_name="Port Scanning",
         description="Scan targets for open TCP/UDP ports",
+        weight=100.0,
+        order=1,
+        depends_on=[],
+    ),
+]
+
+SERVICE_ENUM_STAGES = [
+    PipelineStage(
+        name="service_intelligence",
+        display_name="Service Enumeration",
+        description="Enumerate service versions and banners",
+        weight=100.0,
+        order=1,
+        depends_on=[],
+    ),
+]
+
+VULN_SCAN_STAGES = [
+    PipelineStage(
+        name="vulnerability_assessment",
+        display_name="Vulnerability Assessment",
+        description="Scan for vulnerabilities using OpenVAS/Nessus",
         weight=100.0,
         order=1,
         depends_on=[],
@@ -131,11 +157,8 @@ class AssessmentManager:
         self._assessments: dict[str, AssessmentRecord] = {}
         self._trackers: dict[str, ProgressTracker] = {}
         self._pipeline_cache: dict[str, AssessmentPipeline] = {}
+        self._runners: dict[str, AssessmentRunner] = {}
         self._stage_manager = StageManager()
-        self._runner = AssessmentRunner(
-            pipeline=AssessmentPipeline(stages=FULL_ASSESSMENT_STAGES),
-            stage_manager=self._stage_manager,
-        )
 
     @property
     def stage_manager(self) -> StageManager:
@@ -148,6 +171,10 @@ class AssessmentManager:
             return AssessmentPipeline(stages=HOST_DISCOVERY_STAGES)
         elif scan_type == "port_scan":
             return AssessmentPipeline(stages=PORT_SCAN_STAGES)
+        elif scan_type == "service_enum":
+            return AssessmentPipeline(stages=SERVICE_ENUM_STAGES)
+        elif scan_type == "vuln_scan":
+            return AssessmentPipeline(stages=VULN_SCAN_STAGES)
         else:
             return AssessmentPipeline(stages=FULL_ASSESSMENT_STAGES)
 
@@ -211,6 +238,136 @@ class AssessmentManager:
 
         return page_items, total
 
+    @staticmethod
+    def _record_from_scan(scan: Scan) -> AssessmentRecord:
+        record = AssessmentRecord(
+            assessment_id=str(scan.id),
+            name=scan.name,
+            scan_type=scan.scan_type,
+            target=scan.target,
+            parameters=scan.parameters or {},
+        )
+        try:
+            record.status = AssessmentStatus(scan.status)
+        except ValueError:
+            record.status = AssessmentStatus.FAILED
+        record.created_at = scan.created_at or datetime.now(timezone.utc)
+        record.updated_at = scan.updated_at or record.created_at
+        record.started_at = scan.started_at
+        record.completed_at = scan.completed_at
+        record.error_message = scan.error_message
+        return record
+
+    async def persist_assessment(self, assessment_id: str) -> None:
+        record = self._assessments.get(assessment_id)
+        if record is None:
+            return
+        values = dict(
+            name=record.name,
+            scan_type=record.scan_type,
+            target=record.target,
+            status=record.status.value,
+            started_at=record.started_at,
+            completed_at=record.completed_at,
+            parameters=record.parameters,
+            error_message=record.error_message,
+            updated_at=record.updated_at,
+        )
+        try:
+            async with async_session_factory() as session:
+                scan = await session.get(Scan, uuid.UUID(assessment_id))
+                if scan is None:
+                    session.add(
+                        Scan(
+                            id=uuid.UUID(assessment_id),
+                            created_at=record.created_at,
+                            **values,
+                        )
+                    )
+                else:
+                    for key, value in values.items():
+                        setattr(scan, key, value)
+                await session.commit()
+        except Exception as exc:
+            logger.error(
+                "Failed to persist assessment {id}: {error}",
+                id=assessment_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    async def remove_persisted(self, assessment_id: str) -> None:
+        try:
+            async with async_session_factory() as session:
+                scan = await session.get(Scan, uuid.UUID(assessment_id))
+                if scan is not None:
+                    await session.delete(scan)
+                    await session.commit()
+        except Exception as exc:
+            logger.error(
+                "Failed to remove persisted assessment {id}: {error}",
+                id=assessment_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    async def list_assessments_persisted(
+        self,
+        status: Optional[str] = None,
+        scan_type: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list[AssessmentRecord], int]:
+        results = list(self._assessments.values())
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(Scan).order_by(Scan.created_at.desc())
+                )
+                results.extend(
+                    self._record_from_scan(row)
+                    for row in result.scalars()
+                    if str(row.id) not in self._assessments
+                )
+        except Exception as exc:
+            logger.error(
+                "Failed to load persisted assessments: {error}",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+        if status:
+            results = [a for a in results if a.status.value == status]
+        if scan_type:
+            results = [a for a in results if a.scan_type == scan_type]
+
+        results.sort(key=lambda a: a.created_at, reverse=True)
+        total = len(results)
+
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = results[start:end]
+
+        return page_items, total
+
+    async def get_assessment_status_persisted(
+        self, assessment_id: str
+    ) -> Optional[dict]:
+        try:
+            return self.get_assessment_status(assessment_id)
+        except AssessmentNotFoundError:
+            pass
+        try:
+            async with async_session_factory() as session:
+                scan = await session.get(Scan, uuid.UUID(assessment_id))
+        except Exception as exc:
+            logger.error(
+                "Failed to load persisted assessment {id}: {error}",
+                id=assessment_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            scan = None
+        if scan is None:
+            raise AssessmentNotFoundError(assessment_id)
+        return self._record_from_scan(scan).to_dict()
+
     def update_assessment_status(
         self, assessment_id: str, new_status: AssessmentStatus
     ) -> AssessmentRecord:
@@ -244,7 +401,11 @@ class AssessmentManager:
         if record.status == AssessmentStatus.RUNNING:
             raise AssessmentAlreadyRunningError(assessment_id)
 
+        if record.status in (AssessmentStatus.DRAFT, AssessmentStatus.FAILED, AssessmentStatus.CANCELLED):
+            self.update_assessment_status(assessment_id, AssessmentStatus.PENDING)
+
         self.update_assessment_status(assessment_id, AssessmentStatus.RUNNING)
+
         tracker = self._trackers.get(assessment_id)
         pipeline = self._pipeline_cache.get(assessment_id)
 
@@ -254,13 +415,21 @@ class AssessmentManager:
             tracker = ProgressTracker(pipeline)
             self._trackers[assessment_id] = tracker
 
-        self._runner = AssessmentRunner(
+        runner = AssessmentRunner(
             pipeline=pipeline,
             stage_manager=self._stage_manager,
         )
+        self._runners[assessment_id] = runner
 
-        asyncio_task = __import__("asyncio").create_task(
-            self._runner.run_assessment(
+        logger.info(
+            "Starting assessment pipeline: {id} ({type}) - target: {target}",
+            id=assessment_id,
+            type=record.scan_type,
+            target=record.target,
+        )
+
+        asyncio.create_task(
+            runner.run_assessment(
                 assessment_id=assessment_id,
                 target=record.target,
                 tracker=tracker,
@@ -274,6 +443,9 @@ class AssessmentManager:
     async def _on_status_change(
         self, assessment_id: str, status: AssessmentStatus
     ) -> None:
+        record = self._assessments.get(assessment_id)
+        if record and record.status == status:
+            return
         try:
             self.update_assessment_status(assessment_id, status)
         except AssessmentInvalidTransitionError:
@@ -282,6 +454,9 @@ class AssessmentManager:
                 id=assessment_id,
                 status=status.value,
             )
+            return
+        if status.is_terminal:
+            await self.persist_assessment(assessment_id)
 
     def cancel_assessment(self, assessment_id: str) -> AssessmentRecord:
         record = self.get_assessment(assessment_id)
@@ -291,12 +466,16 @@ class AssessmentManager:
                 record.status.value, AssessmentStatus.CANCELLED.value
             )
 
-        self._runner.cancel_assessment(assessment_id)
+        runner = self._runners.get(assessment_id)
+        if runner:
+            runner.cancel_assessment(assessment_id)
         self.update_assessment_status(assessment_id, AssessmentStatus.CANCELLED)
 
         tracker = self._trackers.get(assessment_id)
         if tracker:
             tracker.fail(error_message="Assessment cancelled by user")
+
+        logger.info("Assessment cancelled: {id}", id=assessment_id)
 
         return record
 
@@ -304,10 +483,13 @@ class AssessmentManager:
         if assessment_id in self._assessments:
             record = self._assessments[assessment_id]
             if record.status == AssessmentStatus.RUNNING:
-                self._runner.cancel_assessment(assessment_id)
+                runner = self._runners.get(assessment_id)
+                if runner:
+                    runner.cancel_assessment(assessment_id)
             del self._assessments[assessment_id]
             self._trackers.pop(assessment_id, None)
             self._pipeline_cache.pop(assessment_id, None)
+            self._runners.pop(assessment_id, None)
             logger.info("Deleted assessment: {id}", id=assessment_id)
             return True
         return False

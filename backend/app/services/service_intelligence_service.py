@@ -493,13 +493,30 @@ async def get_all_services(
     search: Optional[str] = None,
     sort_by: str = "name",
     sort_order: str = "asc",
+    assessment_id: Optional[str] = None,
 ) -> tuple[list[Service], int]:
     query = select(Service).options(joinedload(Service.port).joinedload(Port.host))
+    count_query = select(Service.id).select_from(Service)
+
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return [], 0
+        query = query.join(Port, Service.port_id == Port.id).join(Host, Port.host_id == Host.id)
+        query = query.where(Host.scan_id == aid)
+        count_query = (
+            count_query.join(Port, Service.port_id == Port.id)
+            .join(Host, Port.host_id == Host.id)
+            .where(Host.scan_id == aid)
+        )
 
     if category:
         query = query.where(Service.category == category)
+        count_query = count_query.where(Service.category == category)
     if confidence_min is not None:
         query = query.where(Service.confidence >= confidence_min)
+        count_query = count_query.where(Service.confidence >= confidence_min)
     if search:
         query = query.where(
             Service.name.ilike(f"%{search}%")
@@ -508,13 +525,6 @@ async def get_all_services(
             | Service.normalized_product.ilike(f"%{search}%")
             | Service.version.ilike(f"%{search}%")
         )
-
-    count_query = select(Service.id).select_from(Service)
-    if category:
-        count_query = count_query.where(Service.category == category)
-    if confidence_min is not None:
-        count_query = count_query.where(Service.confidence >= confidence_min)
-    if search:
         count_query = count_query.where(
             Service.name.ilike(f"%{search}%")
             | Service.product.ilike(f"%{search}%")
@@ -541,9 +551,13 @@ async def get_service_by_id(
     session: AsyncSession,
     service_id: str,
 ) -> Optional[Service]:
+    try:
+        uid = uuid.UUID(service_id)
+    except ValueError:
+        return None
     result = await session.execute(
         select(Service)
-        .where(Service.id == uuid.UUID(service_id))
+        .where(Service.id == uid)
         .options(joinedload(Service.port).joinedload(Port.host))
     )
     return result.scalar_one_or_none()
@@ -551,8 +565,19 @@ async def get_service_by_id(
 
 async def get_all_categories(
     session: AsyncSession,
+    assessment_id: Optional[str] = None,
 ) -> list[str]:
-    result = await session.execute(
-        select(Service.category).where(Service.category.isnot(None)).distinct().order_by(Service.category)
-    )
+    query = select(Service.category).where(Service.category.isnot(None))
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return []
+        query = (
+            query.join(Port, Service.port_id == Port.id)
+            .join(Host, Port.host_id == Host.id)
+            .where(Host.scan_id == aid)
+        )
+    query = query.distinct().order_by(Service.category)
+    result = await session.execute(query)
     return [row[0] for row in result.fetchall()]

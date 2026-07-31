@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Thu Jul 30 23:01:10 2026 as: E:\\Nmap\\nmap.EXE -sn -n -oX - -&#45;no-stylesheet 192.168.0.0/24 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.EXE -sn -n -oX - -&#45;no-stylesheet 192.168.0.0/24" start="1785432670" startstr="Thu Jul 30 23:01:10 2026" version="7.99" xmloutputversion="1.05">
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.0.1" addrtype="ipv4"/>
+<address addr="9C:A2:F4:07:2A:0C" addrtype="mac" vendor="TP-Link Systems"/>
+<hostnames>
+</hostnames>
+<times srtt="11125" rttvar="8500" to="100000"/>
+</host>
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.0.102" addrtype="ipv4"/>
+<address addr="C2:70:93:0C:8D:78" addrtype="mac"/>
+<hostnames>
+</hostnames>
+<times srtt="36361" rttvar="31675" to="163061"/>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="192.168.0.104" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<runstats><finished time="1785432674" timestr="Thu Jul 30 23:01:14 2026" summary="Nmap done at Thu Jul 30 23:01:14 2026; 256 IP addresses (3 hosts up) scanned in 4.59 seconds" elapsed="4.59" exit="success"/><hosts up="3" down="253" total="256"/>
+</runstats>
+</nmaprun>

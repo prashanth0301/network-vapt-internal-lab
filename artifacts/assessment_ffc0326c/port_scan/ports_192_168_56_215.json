@@ -1,0 +1,29 @@
+{
+  "host": "192.168.56.215",
+  "ports": [
+    {
+      "port": 22,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 80,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 443,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    }
+  ]
+}

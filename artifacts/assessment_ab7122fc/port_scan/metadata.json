@@ -1,0 +1,15 @@
+{
+  "assessment_id": "ab7122fc-4495-458e-8a47-38dc1fc9193f",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "udp_scan",
+  "ports": null,
+  "target": "192.168.0.104",
+  "parameters": {
+    "scan_type": "udp_scan",
+    "scan_profile": "top_ports",
+    "ports": null,
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T16:35:39.462951+00:00"
+}

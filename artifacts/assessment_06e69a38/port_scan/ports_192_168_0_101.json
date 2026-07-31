@@ -1,0 +1,13 @@
+{
+  "host": "192.168.0.101",
+  "ports": [
+    {
+      "port": 5060,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    }
+  ]
+}

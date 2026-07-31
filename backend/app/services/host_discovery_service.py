@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,6 +12,7 @@ from app.models.host import Host
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
 from app.services.artifact_manager import artifact_manager
+from app.services.host_enrichment import enrich_hosts
 from app.services.nmap_service import NmapHostResult, run_scan
 
 
@@ -26,6 +28,21 @@ async def host_discovery_handler(
         target=target,
     )
 
+    async with async_session_factory() as session:
+        from sqlalchemy import text
+        assessment_uuid = uuid.UUID(assessment_id) if assessment_id else None
+        if assessment_uuid:
+            await session.execute(text("DELETE FROM hosts WHERE scan_id = :aid"), {"aid": assessment_uuid})
+            await session.execute(text("DELETE FROM vulnerabilities WHERE scan_id = :aid"), {"aid": assessment_uuid})
+        else:
+            await session.execute(text("DELETE FROM exploits"))
+            await session.execute(text("DELETE FROM vulnerabilities"))
+            await session.execute(text("DELETE FROM services"))
+            await session.execute(text("DELETE FROM ports"))
+            await session.execute(text("DELETE FROM hosts"))
+        await session.commit()
+        logger.info("Cleared previous scan data for assessment={id}", id=assessment_id)
+
     params = parameters or {}
     scan_type = params.get("scan_type", "ping_sweep")
     extra_args = params.get("extra_args")
@@ -35,10 +52,14 @@ async def host_discovery_handler(
         assessment_id, "host_discovery"
     )
 
-    cmd_parts = ["nmap", "-sn", target]
-    if extra_args:
-        cmd_parts.extend(extra_args)
-    command_str = " ".join(cmd_parts)
+    from app.services.nmap_service import build_command
+
+    cmd = build_command(
+        scan_type=scan_type,
+        target=target,
+        extra_args=extra_args,
+    )
+    command_str = " ".join(cmd)
     artifact_manager.save_command(artifact_dir, command_str)
 
     metadata = {
@@ -91,6 +112,9 @@ async def host_discovery_handler(
 
     if tracker:
         tracker.update_stage_progress("host_discovery", 60.0)
+
+    if result.hosts:
+        result.hosts = await asyncio.to_thread(enrich_hosts, result.hosts)
 
     if result.raw_output:
         artifact_manager.save_xml(artifact_dir, result.raw_output)
@@ -213,6 +237,7 @@ async def _upsert_host(
     existing = result.scalar_one_or_none()
 
     if existing:
+        existing.scan_id = uuid.UUID(assessment_id) if assessment_id else existing.scan_id
         existing.hostname = nmap_host.hostname or existing.hostname
         existing.mac_address = nmap_host.mac_address or existing.mac_address
         existing.vendor = nmap_host.vendor or existing.vendor
@@ -247,18 +272,24 @@ async def get_all_hosts(
     per_page: int = 20,
     status: Optional[str] = None,
     alive_only: bool = False,
+    assessment_id: Optional[str] = None,
 ) -> tuple[list[Host], int]:
     query = select(Host)
+    count_query = select(Host.id).select_from(Host)
+
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return [], 0
+        query = query.where(Host.scan_id == aid)
+        count_query = count_query.where(Host.scan_id == aid)
 
     if status:
         query = query.where(Host.status == status)
-    if alive_only:
-        query = query.where(Host.is_alive == True)
-
-    count_query = select(Host.id).select_from(Host)
-    if status:
         count_query = count_query.where(Host.status == status)
     if alive_only:
+        query = query.where(Host.is_alive == True)
         count_query = count_query.where(Host.is_alive == True)
 
     total_result = await session.execute(count_query)
@@ -290,11 +321,22 @@ async def delete_host(session: AsyncSession, host_id: str) -> bool:
     return True
 
 
-async def get_host_summary(session: AsyncSession) -> dict:
-    total_result = await session.execute(select(Host.id))
+async def get_host_summary(session: AsyncSession, assessment_id: Optional[str] = None) -> dict:
+    total_query = select(Host.id)
+    alive_query = select(Host.id).where(Host.is_alive == True)
+
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return {"total_hosts": 0, "alive_hosts": 0}
+        total_query = total_query.where(Host.scan_id == aid)
+        alive_query = alive_query.where(Host.scan_id == aid)
+
+    total_result = await session.execute(total_query)
     total = len(total_result.fetchall())
 
-    alive_result = await session.execute(select(Host.id).where(Host.is_alive == True))
+    alive_result = await session.execute(alive_query)
     alive = len(alive_result.fetchall())
 
     return {

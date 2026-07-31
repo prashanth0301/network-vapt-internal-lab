@@ -1,5 +1,15 @@
+import { useContext, useEffect, useState } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 import { useTheme } from '../../hooks/useTheme';
-import { classNames } from '../../utils/helpers';
+import { getAssessments } from '../../services/assessmentService';
+import {
+  clearActiveAssessment,
+  getActiveAssessmentId,
+  getActiveAssessmentName,
+  setActiveAssessment,
+  useAssessmentChangeTick,
+} from '../../services/assessmentStore';
+import type { Assessment } from '../../types/assessment';
 
 interface HeaderProps {
   title: string;
@@ -7,6 +17,29 @@ interface HeaderProps {
 
 export function Header({ title }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useContext(AuthContext);
+  const tick = useAssessmentChangeTick();
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(getActiveAssessmentId());
+
+  useEffect(() => {
+    getAssessments(undefined, undefined, 1, 100)
+      .then((res) => setAssessments(res.data || []))
+      .catch(() => {});
+  }, [tick]);
+
+  const handleChange = (value: string) => {
+    if (!value) {
+      clearActiveAssessment();
+      setActiveId(null);
+      return;
+    }
+    const selected = assessments.find((a) => a.id === value);
+    setActiveAssessment(value, selected?.name);
+    setActiveId(value);
+  };
+
+  const activeName = getActiveAssessmentName();
 
   return (
     <header className="h-16 bg-white dark:bg-surface-900 border-b border-surface-200 dark:border-surface-700 flex items-center justify-between px-6">
@@ -15,6 +48,26 @@ export function Header({ title }: HeaderProps) {
       </h1>
 
       <div className="flex items-center gap-3">
+        <select
+          className="input w-56 text-sm"
+          value={activeId || ''}
+          onChange={(e) => handleChange(e.target.value)}
+          title="Selected assessment"
+        >
+          <option value="">
+            {assessments.length === 0 && !activeId ? 'No assessments' : 'All assessments'}
+          </option>
+          {assessments.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+
+        {activeId && (
+          <span className="hidden lg:block text-xs text-surface-400 max-w-[160px] truncate" title={activeName || undefined}>
+            {activeName || 'Assessment selected'}
+          </span>
+        )}
+
         <button
           onClick={toggleTheme}
           className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 transition-colors"
@@ -33,13 +86,13 @@ export function Header({ title }: HeaderProps) {
 
         <div className="flex items-center gap-2 pl-3 border-l border-surface-200 dark:border-surface-700">
           <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-sm font-medium">
-            O
+            {user ? user.full_name?.charAt(0)?.toUpperCase() || user.username.charAt(0).toUpperCase() : '?'}
           </div>
           <div className="hidden sm:block">
             <p className="text-sm font-medium text-surface-700 dark:text-surface-300">
-              Operator
+              {user?.full_name || user?.username || 'Operator'}
             </p>
-            <p className="text-xs text-surface-400">vapt@lab</p>
+            <p className="text-xs text-surface-400">{user?.email || 'vapt@lab'}</p>
           </div>
         </div>
       </div>

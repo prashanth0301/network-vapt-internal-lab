@@ -3,6 +3,7 @@ import type { Port, PortScanRequest } from '../types/port';
 import apiClient from './api';
 
 export async function getPorts(
+  assessmentId?: string,
   state?: string,
   protocol?: string,
   page = 1,
@@ -11,6 +12,7 @@ export async function getPorts(
   const params = new URLSearchParams();
   if (state) params.set('state', state);
   if (protocol) params.set('protocol', protocol);
+  if (assessmentId) params.set('assessment_id', assessmentId);
   params.set('page', String(page));
   params.set('per_page', String(perPage));
   const response = await apiClient.get<ApiResponse<Port[]>>(`/ports?${params}`);

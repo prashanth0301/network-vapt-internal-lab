@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 
 import { AuthContext } from '../../context/AuthContext';
 import { classNames } from '../../utils/helpers';
+import { APP_VERSION } from '../../constants';
 
 const navItems = [
   { label: 'Dashboard', path: '/', icon: '⊞' },
@@ -124,7 +125,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </button>
         )}
         {!collapsed && (
-          <p className="text-[10px] text-surface-400 text-center mt-1">v1.0.0</p>
+          <p className="text-[10px] text-surface-400 text-center mt-1">v{APP_VERSION}</p>
         )}
       </div>
     </aside>

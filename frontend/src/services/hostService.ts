@@ -2,8 +2,10 @@ import type { ApiResponse } from '../types/common';
 import type { Host, HostDiscoverRequest } from '../types/host';
 import apiClient from './api';
 
-export async function getHosts(): Promise<ApiResponse<Host[]>> {
-  const response = await apiClient.get<ApiResponse<Host[]>>('/hosts');
+export async function getHosts(assessmentId?: string): Promise<ApiResponse<Host[]>> {
+  const params = new URLSearchParams();
+  if (assessmentId) params.set('assessment_id', assessmentId);
+  const response = await apiClient.get<ApiResponse<Host[]>>(`/hosts?${params}`);
   return response.data;
 }
 
@@ -12,8 +14,10 @@ export async function getHostById(id: string): Promise<ApiResponse<Host>> {
   return response.data;
 }
 
-export async function getHostSummary(): Promise<ApiResponse<{ total_hosts: number; alive_hosts: number }>> {
-  const response = await apiClient.get<ApiResponse<{ total_hosts: number; alive_hosts: number }>>('/hosts/summary');
+export async function getHostSummary(assessmentId?: string): Promise<ApiResponse<{ total_hosts: number; alive_hosts: number }>> {
+  const params = new URLSearchParams();
+  if (assessmentId) params.set('assessment_id', assessmentId);
+  const response = await apiClient.get<ApiResponse<{ total_hosts: number; alive_hosts: number }>>(`/hosts/summary?${params}`);
   return response.data;
 }
 

@@ -28,6 +28,10 @@ apiClient.interceptors.response.use(
       const { status } = error.response;
       if (status === 401) {
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
@@ -36,8 +40,16 @@ apiClient.interceptors.response.use(
 
 export function getApiError(error: unknown): string {
   if (error instanceof AxiosError && error.response?.data) {
-    const data = error.response.data as { error?: { message?: string } };
-    return data.error?.message || 'An unexpected error occurred';
+    const data = error.response.data as {
+      error?: { message?: string };
+      detail?: string | Array<{ msg?: string }>;
+    };
+    if (data.error?.message) return data.error.message;
+    if (typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail) && data.detail.length > 0) {
+      return data.detail[0].msg || 'An unexpected error occurred';
+    }
+    return 'An unexpected error occurred';
   }
   if (error instanceof Error) {
     return error.message;

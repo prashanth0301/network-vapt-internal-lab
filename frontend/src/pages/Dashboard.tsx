@@ -10,10 +10,15 @@ import { getHosts, getHostSummary } from '../services/hostService';
 import { getVulnerabilitySummary } from '../services/vulnerabilityService';
 import { getCVEStatistics, getHighRiskCVEs } from '../services/cveService';
 import { getExploitStatistics } from '../services/exploitService';
+import { getPorts } from '../services/portService';
+import { getAssessments } from '../services/assessmentService';
+import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
+import type { Assessment } from '../types/assessment';
 import type { CVE, CVEStatistics } from '../types/cve';
 import type { ExploitStatistics } from '../types/exploit';
 import type { HealthResponse } from '../types/health';
 import type { Host } from '../types/host';
+import type { Port } from '../types/port';
 import type { VulnerabilitySummary } from '../types/vulnerability';
 
 const COLORS: Record<string, string> = {
@@ -26,45 +31,47 @@ const COLORS: Record<string, string> = {
 
 const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 
-const recentScans = [
-  { id: '1', name: 'Full Network Assessment', target: '192.168.56.0/24', status: 'completed', date: '2026-07-28T14:30:00' },
-  { id: '2', name: 'Metasploitable2 Deep Scan', target: '192.168.56.20', status: 'completed', date: '2026-07-28T13:00:00' },
-  { id: '3', name: 'Windows 7 Vuln Scan', target: '192.168.56.30', status: 'running', date: '2026-07-28T15:00:00' },
-  { id: '4', name: 'Port Scan - All Hosts', target: '192.168.56.0/24', status: 'completed', date: '2026-07-27T16:00:00' },
-];
+async function fetchSafe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try { return await fn(); } catch { return fallback; }
+}
 
 export function Dashboard() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [hosts, setHosts] = useState<Host[]>([]);
+  const [ports, setPorts] = useState<Port[]>([]);
   const [summary, setSummary] = useState<{ total_hosts: number; alive_hosts: number } | null>(null);
   const [vulnSummary, setVulnSummary] = useState<VulnerabilitySummary | null>(null);
   const [cveStats, setCveStats] = useState<CVEStatistics | null>(null);
   const [highRiskCves, setHighRiskCves] = useState<CVE[]>([]);
   const [exploitStats, setExploitStats] = useState<ExploitStatistics | null>(null);
+  const [recentScans, setRecentScans] = useState<Assessment[]>([]);
+  const tick = useAssessmentChangeTick();
 
   useEffect(() => {
+    const assessmentId = getActiveAssessmentId() ?? undefined;
     Promise.all([
-      checkHealth(),
-      getHosts(),
-      getHostSummary(),
-      getVulnerabilitySummary(),
-      getCVEStatistics(),
-      getHighRiskCVEs(5),
-      getExploitStatistics(),
-    ])
-      .then(([healthRes, hostsRes, summaryRes, vulnRes, cveRes, highRiskRes, expRes]) => {
-        setHealth(healthRes);
-        setHosts(hostsRes.data);
-        setSummary(summaryRes.data);
-        setVulnSummary(vulnRes.data);
-        setCveStats(cveRes.data);
-        setHighRiskCves(highRiskRes.data);
-        setExploitStats(expRes.data);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+      fetchSafe(checkHealth, null),
+      fetchSafe(() => getHosts(assessmentId).then(r => r.data), []),
+      fetchSafe(() => getHostSummary(assessmentId).then(r => r.data), null),
+      fetchSafe(() => getPorts(assessmentId).then(r => r.data), []),
+      fetchSafe(() => getVulnerabilitySummary(assessmentId).then(r => r.data), null),
+      fetchSafe(() => getCVEStatistics(assessmentId).then(r => r.data), null),
+      fetchSafe(() => getHighRiskCVEs(5, assessmentId).then(r => r.data), []),
+      fetchSafe(() => getExploitStatistics(assessmentId).then(r => r.data), null),
+      fetchSafe(() => getAssessments(undefined, undefined, 1, 4).then(r => r.data), []),
+    ]).then(([healthRes, hostsData, summaryData, portsData, vulnData, cveData, highRiskData, expData, scansData]) => {
+      setHealth(healthRes);
+      setHosts(hostsData);
+      setSummary(summaryData);
+      setPorts(portsData);
+      setVulnSummary(vulnData);
+      setCveStats(cveData);
+      setHighRiskCves(highRiskData);
+      setExploitStats(expData);
+      setRecentScans(scansData);
+    }).finally(() => setLoading(false));
+  }, [tick]);
 
   const riskData = severityOrder.map((sev) => ({
     name: sev,
@@ -93,26 +100,22 @@ export function Dashboard() {
         <StatCard
           title="Live Hosts"
           value={String(summary?.alive_hosts ?? 0)}
-          subtitle="192.168.56.0/24"
-          trend={{ value: 0, positive: true }}
+          subtitle={`${summary?.total_hosts ?? 0} total hosts`}
         />
         <StatCard
           title="Open Ports"
-          value="43"
-          subtitle="Across all targets"
-          trend={{ value: 12, positive: false }}
+          value={String(ports.filter((p) => p.state === 'open').length)}
+          subtitle={`${ports.length} total port records`}
         />
         <StatCard
           title="Vulnerabilities"
           value={String(totalVulns)}
           subtitle={vulnSubtitle}
-          trend={{ value: 8, positive: false }}
         />
         <StatCard
           title="Open Findings"
           value={String(vulnSummary?.open_count ?? 0)}
           subtitle={`Avg CVSS: ${vulnSummary?.average_cvss ?? '—'}`}
-          trend={{ value: 0, positive: false }}
         />
       </div>
 
@@ -193,9 +196,9 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card title="Recent Scans" subtitle="Last 4 scan activities">
+        <Card title="Recent Scans" subtitle="Last 4 assessments">
           <div className="space-y-3">
-            {recentScans.map((scan) => (
+            {recentScans.length > 0 ? recentScans.map((scan) => (
               <div
                 key={scan.id}
                 className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50"
@@ -213,11 +216,13 @@ export function Dashboard() {
                     {scan.status}
                   </Badge>
                   <span className="text-xs text-surface-400 whitespace-nowrap">
-                    {new Date(scan.date).toLocaleDateString()}
+                    {new Date(scan.created_at).toLocaleDateString()}
                   </span>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-sm text-surface-400 text-center py-4">No assessments yet — create one from the Workspace</div>
+            )}
           </div>
         </Card>
 

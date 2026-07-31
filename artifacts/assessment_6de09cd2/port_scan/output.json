@@ -1,0 +1,29 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "target": "192.168.0.100/24",
+  "total_hosts_scanned": 3,
+  "total_ports_found": 28,
+  "total_services_found": 11,
+  "scan_details": [
+    {
+      "host": "192.168.0.1",
+      "ports_found": 4,
+      "services_found": 3,
+      "duration_seconds": 5.611888
+    },
+    {
+      "host": "192.168.0.101",
+      "ports_found": 0,
+      "services_found": 0,
+      "duration_seconds": 4.599456
+    },
+    {
+      "host": "192.168.0.100",
+      "ports_found": 24,
+      "services_found": 8,
+      "duration_seconds": 5.114607
+    }
+  ],
+  "errors": []
+}

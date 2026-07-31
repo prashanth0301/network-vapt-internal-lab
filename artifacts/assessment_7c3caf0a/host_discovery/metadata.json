@@ -1,0 +1,8 @@
+{
+  "assessment_id": "7c3caf0a-5c14-4f00-a888-19cb91e2e367",
+  "stage": "host_discovery",
+  "scan_type": "ping_sweep",
+  "target": "127.0.0.1",
+  "parameters": {},
+  "start_time": "2026-07-30T02:13:34.463006+00:00"
+}

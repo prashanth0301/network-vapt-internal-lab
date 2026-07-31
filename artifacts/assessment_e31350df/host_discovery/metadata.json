@@ -1,0 +1,10 @@
+{
+  "assessment_id": "e31350df-9245-4578-9a83-84c2c85dcef8",
+  "stage": "host_discovery",
+  "scan_type": "ping_sweep",
+  "target": "192.168.0.0/24",
+  "parameters": {
+    "scan_type": "ping_sweep"
+  },
+  "start_time": "2026-07-30T12:29:09.792895+00:00"
+}

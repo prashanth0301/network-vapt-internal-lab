@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.middleware.rate_limiter import login_limiter
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.schemas.auth import (
@@ -32,6 +33,12 @@ async def login(
     req: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    client_ip = req.client.host if req.client else "unknown"
+    if not login_limiter.check(f"login:{client_ip}"):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please wait before trying again.",
+        )
     user = await auth_service.authenticate(db, request.username, request.password)
     if not user:
         raise HTTPException(

@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 
 import { classNames } from '../../utils/helpers';
 
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info';
+
 interface BadgeProps {
   children: ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  variant?: BadgeVariant;
   size?: 'sm' | 'md';
   className?: string;
 }

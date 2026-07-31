@@ -1,0 +1,15 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "192.168.0.104",
+  "total_hosts": 1,
+  "hosts": [
+    {
+      "ip": "192.168.0.104",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": "Linux / Unix",
+      "status": "up"
+    }
+  ]
+}

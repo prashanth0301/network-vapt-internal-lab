@@ -1,0 +1,15 @@
+{
+  "assessment_id": "0f6bc620-f36a-47ce-ab5b-ca659b07c348",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_connect",
+  "ports": null,
+  "target": "172.18.13.77",
+  "parameters": {
+    "scan_type": "tcp_connect",
+    "scan_profile": "top_ports",
+    "ports": null,
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T04:31:31.150188+00:00"
+}

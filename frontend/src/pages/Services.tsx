@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge } from '../components/ui/Badge';
+import { useCallback, useEffect, useState } from 'react';
+
+import { Badge, type BadgeVariant } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import type { ServiceIntelligence } from '../types/service';
 import { getCategories, getServices } from '../services/serviceIntelligenceService';
+import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
 
-function confidenceColor(score: number | null): string {
+function confidenceColor(score: number | null): BadgeVariant {
   if (score === null) return 'default';
   if (score >= 90) return 'success';
-  if (score >= 70) return 'primary';
+  if (score >= 70) return 'info';
   if (score >= 50) return 'warning';
   return 'default';
 }
@@ -27,6 +29,7 @@ export function Services() {
   const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState<string[]>([]);
   const perPage = 20;
+  const tick = useAssessmentChangeTick();
 
   const fetchServices = useCallback(async () => {
     setLoading(true);
@@ -40,6 +43,7 @@ export function Services() {
         sortOrder,
         page,
         perPage,
+        getActiveAssessmentId() ?? undefined,
       );
       setServices(res.data);
       setTotal(res.pagination.total);
@@ -49,17 +53,17 @@ export function Services() {
     } finally {
       setLoading(false);
     }
-  }, [categoryFilter, search, sortBy, sortOrder, page]);
+  }, [categoryFilter, search, sortBy, sortOrder, page, tick]);
 
   useEffect(() => {
     fetchServices();
   }, [fetchServices]);
 
   useEffect(() => {
-    getCategories()
+    getCategories(getActiveAssessmentId() ?? undefined)
       .then((res) => setCategories(res.data))
       .catch(() => {});
-  }, []);
+  }, [tick]);
 
   useEffect(() => {
     setPage(1);
@@ -108,7 +112,7 @@ export function Services() {
         {error && (
           <div className="p-4 mb-4 text-critical bg-critical/10 rounded-lg border border-critical/20 text-sm">
             {error}
-            <Button variant="ghost" size="xs" className="ml-3" onClick={fetchServices}>Retry</Button>
+            <Button variant="ghost" size="sm" className="ml-3" onClick={fetchServices}>Retry</Button>
           </div>
         )}
 
@@ -158,7 +162,7 @@ export function Services() {
                         {s.host_name && <span className="block text-xs text-surface-400">{s.host_name}</span>}
                       </td>
                       <td className="px-3 py-3">
-                        <span className="font-mono text-sm">{s.port_number}/{s.port_protocol}</span>
+                        <span className="font-mono text-sm">{s.port_number ? `${s.port_number}/${s.port_protocol || ''}` : '—'}</span>
                       </td>
                       <td className="px-3 py-3 text-surface-600 dark:text-surface-400">
                         {s.normalized_product || s.product || '—'}
@@ -167,7 +171,7 @@ export function Services() {
                         {s.normalized_version || s.version || '—'}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge variant={s.category === 'Other' || !s.category ? 'default' : 'primary'}>
+                        <Badge variant={s.category === 'Other' || !s.category ? 'default' : 'info'}>
                           {s.category || 'Uncategorized'}
                         </Badge>
                       </td>

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -5,6 +6,7 @@ from typing import Optional
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session_factory
 from app.models.host import Host
@@ -13,8 +15,11 @@ from app.models.service import Service
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
 from app.services.artifact_manager import artifact_manager
-from app.services.nmap_service import NmapPortResult, run_scan
+from app.services.host_discovery_service import host_discovery_handler
+from app.services.nmap_service import NmapPortResult, run_scan, build_command
 
+
+PORT_SCAN_TYPES = {"tcp_syn", "tcp_connect", "udp_scan"}
 
 SCAN_PROFILES = {
     "top_ports": {"display_name": "Top 1000 Ports", "ports": None, "extra_args": ["--top-ports", "1000"]},
@@ -49,6 +54,17 @@ async def _save_port_scan_artifacts(
         )
 
 
+async def _get_alive_hosts(session: AsyncSession, assessment_id: str) -> list[Host]:
+    try:
+        aid = uuid.UUID(assessment_id)
+    except ValueError:
+        return []
+    result = await session.execute(
+        select(Host).where(Host.is_alive == True, Host.scan_id == aid)
+    )
+    return list(result.scalars().all())
+
+
 async def port_scan_handler(
     assessment_id: str,
     target: str,
@@ -67,6 +83,13 @@ async def port_scan_handler(
     ports = params.get("ports")
     extra_args = params.get("extra_args")
 
+    if scan_type not in PORT_SCAN_TYPES:
+        logger.error("Invalid scan_type for port scan: {type}", type=scan_type)
+        return {
+            "success": False,
+            "error": f"Invalid scan_type '{scan_type}'. Valid port scan types: {', '.join(sorted(PORT_SCAN_TYPES))}",
+        }
+
     start_time = datetime.now(timezone.utc)
     artifact_dir = artifact_manager.create_stage_directory(
         assessment_id, "port_scan"
@@ -76,13 +99,8 @@ async def port_scan_handler(
     resolved_ports = ports or profile.get("ports")
     resolved_extra_args = extra_args or profile.get("extra_args")
 
-    cmd_parts = ["nmap", "-sS"]
-    if resolved_ports:
-        cmd_parts.extend(["-p", str(resolved_ports)])
-    cmd_parts.append(target)
-    if resolved_extra_args:
-        cmd_parts.extend(resolved_extra_args)
-    command_str = " ".join(cmd_parts)
+    command_list = build_command(scan_type, target, resolved_ports, resolved_extra_args)
+    command_str = " ".join(command_list)
     artifact_manager.save_command(artifact_dir, command_str)
 
     metadata = {
@@ -94,6 +112,8 @@ async def port_scan_handler(
         "target": target,
         "parameters": params,
         "start_time": start_time.isoformat(),
+        "command": command_str,
+        "scan_types_used": [scan_type],
     }
     artifact_manager.save_metadata(artifact_dir, metadata)
 
@@ -107,10 +127,38 @@ async def port_scan_handler(
         tracker.update_stage_progress("port_scan", 10.0)
 
     async with async_session_factory() as session:
-        hosts_result = await session.execute(
-            select(Host).where(Host.is_alive == True)
+        alive_hosts = await _get_alive_hosts(session, assessment_id)
+
+    if not alive_hosts:
+        logger.info(
+            "No hosts for assessment {id}; bootstrapping via host discovery on {target}",
+            id=assessment_id,
+            target=target,
         )
-        alive_hosts = list(hosts_result.scalars().all())
+        discovery = await host_discovery_handler(
+            assessment_id=assessment_id,
+            target=target,
+            parameters={"scan_type": "ping_sweep"},
+            tracker=tracker,
+        )
+        if not discovery.get("success"):
+            logger.error(
+                "Host discovery bootstrap failed for assessment {id}: {error}",
+                id=assessment_id,
+                error=discovery.get("error", "unknown"),
+            )
+            return {
+                "success": False,
+                "error": discovery.get("error", "Host discovery bootstrap failed"),
+            }
+
+        async with async_session_factory() as session:
+            alive_hosts = await _get_alive_hosts(session, assessment_id)
+        logger.info(
+            "Host discovery bootstrap found {count} alive hosts for assessment {id}",
+            count=len(alive_hosts),
+            id=assessment_id,
+        )
 
     if not alive_hosts:
         logger.warning("No alive hosts found to scan")
@@ -142,42 +190,40 @@ async def port_scan_handler(
         return {"success": True, "summary": {"total_hosts_scanned": 0, "total_ports_found": 0}}
 
     total_hosts = len(alive_hosts)
-    total_ports_found = 0
-    total_services_found = 0
-    scan_details = []
     host_progress_per_host = 80.0 / total_hosts if total_hosts > 0 else 0
-    scan_errors = []
+    semaphore = asyncio.Semaphore(5)
 
-    for idx, host in enumerate(alive_hosts):
-        host_target = host.ip_address
-        host_progress_start = 15.0 + (idx * host_progress_per_host)
-
-        if tracker:
-            tracker.update_stage_progress("port_scan", host_progress_start)
-
-        result = await run_scan(
-            scan_type=scan_type,
-            target=host_target,
-            ports=resolved_ports,
-            extra_args=resolved_extra_args,
+    async def scan_host(host: Host, idx: int) -> dict:
+        host_target = str(host.ip_address)
+        host_command_list = build_command(scan_type, host_target, resolved_ports, resolved_extra_args)
+        host_command_str = " ".join(host_command_list)
+        artifact_manager.save_text(
+            artifact_dir,
+            f"command_{host_target.replace('.', '_')}.txt",
+            host_command_str,
         )
+
+        async with semaphore:
+            result = await run_scan(
+                scan_type=scan_type,
+                target=host_target,
+                ports=resolved_ports,
+                extra_args=resolved_extra_args,
+            )
 
         if result.error:
             logger.error("Port scan failed for {ip}: {error}", ip=host_target, error=result.error)
-            scan_details.append({"host": host_target, "error": result.error, "ports_found": 0})
-            scan_errors.append({"host": host_target, "error": result.error})
-            continue
+            return {"host": host_target, "error": result.error, "ports_found": 0, "command": host_command_str}
 
         if not result.hosts:
-            scan_details.append({"host": host_target, "ports_found": 0})
-            continue
+            return {"host": host_target, "ports_found": 0, "command": host_command_str}
 
         scanned_host = result.hosts[0]
-        ports_found_for_host = 0
-        services_found_for_host = 0
-
         await _save_port_scan_artifacts(artifact_dir, {}, result, host_target)
 
+        ports_found_for_host = 0
+        services_found_for_host = 0
+        store_error = None
         try:
             async with async_session_factory() as session:
                 for nmap_port in scanned_host.open_ports:
@@ -186,26 +232,38 @@ async def port_scan_handler(
                         await _upsert_service(session, upserted.id, nmap_port)
                         services_found_for_host += 1
                     ports_found_for_host += 1
-
                 await session.commit()
         except Exception as e:
             logger.error("Failed to store port results for {ip}: {error}", ip=host_target, error=str(e))
-            scan_errors.append({"host": host_target, "error": str(e)})
-            continue
+            store_error = str(e)
 
-        total_ports_found += ports_found_for_host
-        total_services_found += services_found_for_host
+        if tracker:
+            progress = 15.0 + ((idx + 1) * host_progress_per_host)
+            tracker.update_stage_progress("port_scan", min(progress, 95.0))
 
-        scan_details.append({
+        if store_error:
+            return {"host": host_target, "error": store_error, "ports_found": ports_found_for_host, "command": host_command_str}
+
+        return {
             "host": host_target,
             "ports_found": ports_found_for_host,
             "services_found": services_found_for_host,
             "duration_seconds": result.duration_seconds,
-        })
+            "command": host_command_str,
+        }
 
-        if tracker:
-            progress = host_progress_start + host_progress_per_host
-            tracker.update_stage_progress("port_scan", min(progress, 95.0))
+    results = await asyncio.gather(*[scan_host(host, idx) for idx, host in enumerate(alive_hosts)])
+
+    total_ports_found = 0
+    total_services_found = 0
+    scan_details = []
+    scan_errors = []
+    for r in results:
+        if r.get("error"):
+            scan_errors.append({"host": r["host"], "error": r["error"]})
+        total_ports_found += r.get("ports_found", 0)
+        total_services_found += r.get("services_found", 0)
+        scan_details.append(r)
 
     end_time = datetime.now(timezone.utc)
     duration = (end_time - start_time).total_seconds()
@@ -214,6 +272,7 @@ async def port_scan_handler(
         "scan_profile": scan_profile,
         "scan_type": scan_type,
         "target": target,
+        "command": command_str,
         "total_hosts_scanned": total_hosts,
         "total_ports_found": total_ports_found,
         "total_services_found": total_services_found,
@@ -247,6 +306,7 @@ async def port_scan_handler(
         "scan_profile": scan_profile,
         "scan_type": scan_type,
         "ports": resolved_ports,
+        "command": command_str,
         "total_hosts_scanned": total_hosts,
         "total_ports_found": total_ports_found,
         "total_services_found": total_services_found,
@@ -331,7 +391,10 @@ async def get_ports_by_host(
     host_id: str,
 ) -> list[Port]:
     result = await session.execute(
-        select(Port).where(Port.host_id == uuid.UUID(host_id)).order_by(Port.port)
+        select(Port)
+        .options(selectinload(Port.services))
+        .where(Port.host_id == uuid.UUID(host_id))
+        .order_by(Port.port)
     )
     return list(result.scalars().all())
 
@@ -342,6 +405,7 @@ async def get_ports_by_assessment(
 ) -> list[Port]:
     result = await session.execute(
         select(Port)
+        .options(selectinload(Port.services))
         .join(Host, Port.host_id == Host.id)
         .where(Host.scan_id == uuid.UUID(assessment_id))
         .order_by(Host.ip_address, Port.port)
@@ -355,18 +419,24 @@ async def get_all_ports(
     per_page: int = 20,
     state: Optional[str] = None,
     protocol: Optional[str] = None,
+    assessment_id: Optional[str] = None,
 ) -> tuple[list[Port], int]:
-    query = select(Port)
+    query = select(Port).options(selectinload(Port.services))
+    count_query = select(Port).with_only_columns(Port.id).order_by(None)
+
+    if assessment_id:
+        try:
+            aid = uuid.UUID(assessment_id)
+        except ValueError:
+            return [], 0
+        query = query.join(Host, Port.host_id == Host.id).where(Host.scan_id == aid)
+        count_query = count_query.join(Host, Port.host_id == Host.id).where(Host.scan_id == aid)
 
     if state:
         query = query.where(Port.state == state)
-    if protocol:
-        query = query.where(Port.protocol == protocol)
-
-    count_query = select(Port).with_only_columns(Port.id).order_by(None)
-    if state:
         count_query = count_query.where(Port.state == state)
     if protocol:
+        query = query.where(Port.protocol == protocol)
         count_query = count_query.where(Port.protocol == protocol)
 
     count_result = await session.execute(count_query)
@@ -382,6 +452,8 @@ async def get_port_by_id(
     port_id: str,
 ) -> Optional[Port]:
     result = await session.execute(
-        select(Port).where(Port.id == uuid.UUID(port_id))
+        select(Port)
+        .options(selectinload(Port.services))
+        .where(Port.id == uuid.UUID(port_id))
     )
     return result.scalar_one_or_none()

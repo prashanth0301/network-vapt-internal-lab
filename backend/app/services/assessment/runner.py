@@ -52,6 +52,16 @@ class AssessmentRunner:
                 "Assessment runner cancelled: {id}",
                 id=assessment_id,
             )
+            if status_callback:
+                await status_callback(assessment_id, AssessmentStatus.CANCELLED)
+        except Exception as e:
+            logger.error(
+                "Assessment runner crashed: {id} - {error}",
+                id=assessment_id,
+                error=f"{type(e).__name__}: {e}",
+            )
+            if status_callback:
+                await status_callback(assessment_id, AssessmentStatus.FAILED)
         finally:
             self._cleanup(assessment_id)
 
@@ -65,13 +75,10 @@ class AssessmentRunner:
         status_callback=None,
     ) -> None:
         logger.info(
-            "Starting assessment pipeline: {id} (target: {target})",
+            "Assessment started: {id} (target: {target})",
             id=assessment_id,
             target=target,
         )
-
-        if status_callback:
-            await status_callback(assessment_id, AssessmentStatus.RUNNING)
 
         tracker.start()
         execution_order = self._pipeline.get_execution_order()
@@ -83,7 +90,16 @@ class AssessmentRunner:
                     stage=stage.name,
                     id=assessment_id,
                 )
+                tracker.fail(error_message=f"Cancelled during stage '{stage.name}'")
+                if status_callback:
+                    await status_callback(assessment_id, AssessmentStatus.CANCELLED)
                 return
+
+            logger.info(
+                "Assessment stage started: {stage} ({id})",
+                stage=stage.display_name,
+                id=assessment_id,
+            )
 
             if not self._stage_manager.has_handler(stage.name):
                 logger.info(
@@ -91,6 +107,11 @@ class AssessmentRunner:
                     stage=stage.name,
                 )
                 tracker.update_stage_status(stage.name, StageStatus.COMPLETED)
+                logger.info(
+                    "Assessment stage completed: {stage} ({id}) - no handler available",
+                    stage=stage.display_name,
+                    id=assessment_id,
+                )
                 continue
 
             success = await self._stage_manager.execute_stage(
@@ -101,10 +122,16 @@ class AssessmentRunner:
                 parameters=parameters.get(stage.name, parameters),
             )
 
-            if not success and stage.is_required:
+            if success:
+                logger.info(
+                    "Assessment stage completed: {stage} ({id})",
+                    stage=stage.display_name,
+                    id=assessment_id,
+                )
+            elif stage.is_required:
                 logger.error(
-                    "Required stage failed: {stage} ({id}) - aborting pipeline",
-                    stage=stage.name,
+                    "Assessment stage failed: {stage} ({id}) - aborting pipeline",
+                    stage=stage.display_name,
                     id=assessment_id,
                 )
                 tracker.fail(
@@ -112,11 +139,21 @@ class AssessmentRunner:
                 )
                 if status_callback:
                     await status_callback(assessment_id, AssessmentStatus.FAILED)
+                logger.info(
+                    "Assessment failed: {id}",
+                    id=assessment_id,
+                )
                 return
+            else:
+                logger.warning(
+                    "Assessment stage failed (non-required): {stage} ({id}) - continuing",
+                    stage=stage.display_name,
+                    id=assessment_id,
+                )
 
         tracker.complete()
         logger.info(
-            "Assessment pipeline completed: {id}",
+            "Assessment completed: {id}",
             id=assessment_id,
         )
 

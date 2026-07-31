@@ -1,0 +1,47 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "192.168.0.0/24",
+  "total_hosts": 5,
+  "hosts": [
+    {
+      "ip": "192.168.0.1",
+      "hostname": "gateway.local",
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    },
+    {
+      "ip": "192.168.0.10",
+      "hostname": "server01.local",
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    },
+    {
+      "ip": "192.168.0.20",
+      "hostname": "desktop01.local",
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    },
+    {
+      "ip": "192.168.0.100",
+      "hostname": "web01.local",
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    },
+    {
+      "ip": "192.168.0.200",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": null,
+      "status": "up"
+    }
+  ]
+}

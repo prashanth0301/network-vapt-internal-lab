@@ -1,0 +1,140 @@
+{
+  "status": "completed",
+  "total_services": 10,
+  "total_enriched": 10,
+  "categories": {
+    "Other": 4,
+    "File Sharing": 2,
+    "Database": 2,
+    "Remote Access": 1,
+    "Web Server": 1
+  },
+  "confidence_distribution": {
+    "high": 0,
+    "medium": 10,
+    "low": 0,
+    "unknown": 0
+  },
+  "services": [
+    {
+      "id": "a4dd08ab-6737-4bfc-bd35-c6c9a7bf6c3e",
+      "name": "msrpc",
+      "normalized_name": "msrpc",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "db5e415f-0223-4531-beff-d3370f622404",
+      "name": "netbios-ssn",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'netbios-ssn' to 'SMB'"
+    },
+    {
+      "id": "9af53ca5-fe03-4f4e-9a09-2eccc508bf0b",
+      "name": "microsoft-ds",
+      "normalized_name": "SMB",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "File Sharing",
+      "confidence": 85,
+      "notes": "Normalized from 'microsoft-ds' to 'SMB'"
+    },
+    {
+      "id": "ed26a4d9-0b15-459c-b643-9776d2567143",
+      "name": "mysql",
+      "normalized_name": "MySQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'mysql' to 'MySQL'"
+    },
+    {
+      "id": "bc9fb249-49fe-4cd1-9fdc-ab968b28029d",
+      "name": "wsdapi",
+      "normalized_name": "wsdapi",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "a7cac136-0816-4131-9254-32eace20eca4",
+      "name": "postgresql",
+      "normalized_name": "PostgreSQL",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Database",
+      "confidence": 85,
+      "notes": "Normalized from 'postgresql' to 'PostgreSQL'"
+    },
+    {
+      "id": "b47affd4-42a5-4049-987c-1eef62d01054",
+      "name": "http-alt",
+      "normalized_name": "http-alt",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    },
+    {
+      "id": "03e2b22f-fb93-464e-a52b-1811136aad0b",
+      "name": "telnet",
+      "normalized_name": "Telnet",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Remote Access",
+      "confidence": 85,
+      "notes": "Normalized from 'telnet' to 'Telnet'"
+    },
+    {
+      "id": "9d740ccd-0bcb-475f-9315-050314cd829f",
+      "name": "http",
+      "normalized_name": "HTTP",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Web Server",
+      "confidence": 85,
+      "notes": "Normalized from 'http' to 'HTTP'"
+    },
+    {
+      "id": "39138949-df07-427b-ba60-5a586bde293a",
+      "name": "upnp",
+      "normalized_name": "upnp",
+      "product": null,
+      "normalized_product": null,
+      "version": null,
+      "normalized_version": null,
+      "category": "Other",
+      "confidence": 85,
+      "notes": null
+    }
+  ]
+}

@@ -1,93 +1,129 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { getApiError } from '../services/api';
+import {
+  getSettings,
+  resetSettings,
+  saveSettings,
+  type SettingItem,
+} from '../services/settingsService';
+
+const CATEGORY_LABELS: Record<string, { title: string; subtitle: string }> = {
+  network: { title: 'Network Configuration', subtitle: 'Target network and scope settings' },
+  scanner: { title: 'Scanner Configuration', subtitle: 'Nmap and vulnerability scanner settings' },
+  tools: { title: 'Tool Paths', subtitle: 'Security tool executable locations' },
+  custom: { title: 'Custom Settings', subtitle: 'Additional saved settings' },
+};
 
 export function Settings() {
+  const [settings, setSettings] = useState<SettingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const items = await getSettings();
+      setSettings(items);
+      setValues(Object.fromEntries(items.map((s) => [s.key, s.value])));
+    } catch (e) {
+      setError(getApiError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    return settings.filter((s) => {
+      if (seen.has(s.category)) return false;
+      seen.add(s.category);
+      return true;
+    }).map((s) => s.category);
+  }, [settings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const res = await saveSettings(values);
+      setSuccessMessage(res.message || 'Settings saved');
+      await fetchSettings();
+    } catch (e) {
+      setError(getApiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const res = await resetSettings();
+      setSuccessMessage(res.message || 'Settings reset to defaults');
+      await fetchSettings();
+    } catch (e) {
+      setError(getApiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setValue = (key: string, value: string) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
-      <Card title="Network Configuration" subtitle="Target network and scope settings">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Target Subnet</label>
-            <input type="text" className="input font-mono" defaultValue="192.168.56.0/24" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Exclude Hosts</label>
-            <input type="text" className="input font-mono" placeholder="192.168.56.1, 192.168.56.10" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Scan Interface</label>
-            <select className="input">
-              <option>eth0 (192.168.56.10)</option>
-              <option>wlan0</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Ping Sweep Type</label>
-            <select className="input">
-              <option>ICMP Echo (-sn)</option>
-              <option>ARP Scan (-PR)</option>
-              <option>TCP SYN to 443 (-PS443)</option>
-            </select>
-          </div>
-        </div>
-      </Card>
+      {loading ? (
+        <LoadingSpinner size="md" text="Loading settings..." />
+      ) : (
+        categories.map((category) => (
+          <Card key={category} title={CATEGORY_LABELS[category]?.title || category} subtitle={CATEGORY_LABELS[category]?.subtitle}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {settings.filter((s) => s.category === category).map((s) => (
+                <div key={s.key}>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                    {s.description || s.key}
+                  </label>
+                  <input
+                    type="text"
+                    className="input font-mono"
+                    value={values[s.key] ?? ''}
+                    onChange={(e) => setValue(s.key, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))
+      )}
 
-      <Card title="Scanner Configuration" subtitle="Nmap and vulnerability scanner settings">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Nmap Timing Template</label>
-            <select className="input">
-              <option value="T3">Normal (T3)</option>
-              <option value="T4">Aggressive (T4)</option>
-              <option value="T5">Insane (T5)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Max Port Scan Rate</label>
-            <input type="number" className="input" defaultValue={1000} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Vulnerability Scanner</label>
-            <select className="input">
-              <option>OpenVAS</option>
-              <option>Nessus</option>
-              <option>Disabled</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">CVE Database</label>
-            <select className="input">
-              <option>NVD (Online)</option>
-              <option>Local Cache</option>
-            </select>
-          </div>
-        </div>
-      </Card>
-
-      <Card title="Tool Paths" subtitle="Security tool executable locations">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Nmap Path</label>
-            <input type="text" className="input font-mono" defaultValue="/usr/bin/nmap" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">TShark Path</label>
-            <input type="text" className="input font-mono" defaultValue="/usr/bin/tshark" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">MSF RPC Host</label>
-            <input type="text" className="input font-mono" defaultValue="127.0.0.1:55553" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">OpenVAS Socket</label>
-            <input type="text" className="input font-mono" defaultValue="/var/run/openvassd.sock" />
-          </div>
-        </div>
-      </Card>
+      {error && (
+        <div className="p-3 text-critical bg-critical/10 rounded-lg border border-critical/20 text-sm">{error}</div>
+      )}
+      {successMessage && (
+        <div className="p-3 text-success bg-success/10 rounded-lg border border-success/20 text-sm">{successMessage}</div>
+      )}
 
       <div className="flex justify-end gap-3">
-        <Button variant="secondary">Reset to Defaults</Button>
-        <Button variant="primary">Save Settings</Button>
+        <Button variant="secondary" onClick={handleReset} disabled={loading || saving}>
+          Reset to Defaults
+        </Button>
+        <Button variant="primary" onClick={handleSave} disabled={loading || saving}>
+          {saving ? 'Saving...' : 'Save Settings'}
+        </Button>
       </div>
     </div>
   );

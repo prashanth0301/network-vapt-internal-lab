@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_MINUTES: int = 30
     JWT_REFRESH_EXPIRATION_DAYS: int = 7
 
+    NVD_API_KEY: Optional[str] = None
+
+    MSF_RPC_HOST: str = "127.0.0.1"
+    MSF_RPC_PORT: int = 55553
+    MSF_RPC_PASSWORD: Optional[str] = None
+
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["*"]

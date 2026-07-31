@@ -1,0 +1,6 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "172.18.0.0/24",
+  "total_hosts": 0,
+  "hosts": []
+}

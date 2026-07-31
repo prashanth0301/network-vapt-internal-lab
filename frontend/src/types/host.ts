@@ -3,8 +3,10 @@ export interface Host {
   ip_address: string;
   hostname: string | null;
   mac_address: string | null;
+  vendor: string | null;
   os_name: string | null;
   os_version: string | null;
+  os_accuracy: number | null;
   status: string;
   is_alive: boolean;
   latency: number | null;

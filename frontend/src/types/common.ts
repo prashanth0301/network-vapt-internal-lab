@@ -1,12 +1,12 @@
 export interface ApiResponse<T> {
-  status: 'success' | 'error';
+  status?: 'success' | 'error';
   data: T;
   message?: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface PaginatedResponse<T> {
-  status: 'success' | 'error';
+  status?: 'success' | 'error';
   data: T[];
   pagination: {
     page: number;
@@ -14,7 +14,7 @@ export interface PaginatedResponse<T> {
     total: number;
     total_pages: number;
   };
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface ErrorResponse {

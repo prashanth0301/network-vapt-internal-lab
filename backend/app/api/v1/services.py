@@ -26,6 +26,7 @@ async def list_services(
     category: Optional[str] = Query(None, description="Filter by service category"),
     confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score"),
     search: Optional[str] = Query(None, description="Search in name, product, version"),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     sort_by: str = Query("name", description="Sort field"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -41,6 +42,7 @@ async def list_services(
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
+        assessment_id=assessment_id,
     )
     items = [_service_to_response(s) for s in services]
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -50,15 +52,13 @@ async def list_services(
     )
 
 
-@router.get("/{service_id}", response_model=SuccessResponse[ServiceIntelligenceResponse])
-async def get_service(
-    service_id: str,
+@router.get("/categories", response_model=SuccessResponse[list[str]])
+async def list_categories(
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     db: AsyncSession = Depends(get_db),
 ):
-    service = await get_service_by_id(db, service_id)
-    if not service:
-        return SuccessResponse(data=None, message=f"Service '{service_id}' not found")
-    return SuccessResponse(data=_service_to_response(service), message="Service retrieved")
+    categories = await get_all_categories(db, assessment_id)
+    return SuccessResponse(data=categories, message=f"Found {len(categories)} categories")
 
 
 @router.get("/by-host/{host_id}", response_model=SuccessResponse[list[ServiceIntelligenceResponse]])
@@ -81,12 +81,15 @@ async def list_services_by_assessment(
     return SuccessResponse(data=items, message=f"Found {len(items)} services for assessment")
 
 
-@router.get("/categories", response_model=SuccessResponse[list[str]])
-async def list_categories(
+@router.get("/{service_id}", response_model=SuccessResponse[ServiceIntelligenceResponse])
+async def get_service(
+    service_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    categories = await get_all_categories(db)
-    return SuccessResponse(data=categories, message=f"Found {len(categories)} categories")
+    service = await get_service_by_id(db, service_id)
+    if not service:
+        return SuccessResponse(data=None, message=f"Service '{service_id}' not found")
+    return SuccessResponse(data=_service_to_response(service), message="Service retrieved")
 
 
 @router.post("/enrich", response_model=SuccessResponse[dict])
@@ -112,7 +115,12 @@ async def enrich_services(
             message=f"Enriched {services_enriched} services",
         )
 
-    services_result = await get_all_services(session=db, per_page=10000)
+    if body.assessment_id:
+        services_result = await get_all_services(
+            session=db, per_page=10000, assessment_id=str(body.assessment_id)
+        )
+    else:
+        services_result = await get_all_services(session=db, per_page=10000)
     services = services_result[0]
     enriched = 0
     for service in services:
@@ -139,7 +147,7 @@ def _service_to_response(service) -> ServiceIntelligenceResponse:
         port_protocol = service.port.protocol
         if service.port.host:
             host_id = service.port.host.id
-            host_ip = service.port.host.ip_address
+            host_ip = str(service.port.host.ip_address)
             host_name = service.port.host.hostname
 
     return ServiceIntelligenceResponse(

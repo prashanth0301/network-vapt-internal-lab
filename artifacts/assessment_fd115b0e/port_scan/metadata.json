@@ -1,0 +1,15 @@
+{
+  "assessment_id": "fd115b0e-30b9-446e-884a-12d36f425356",
+  "stage": "port_scan",
+  "scan_profile": "custom_range",
+  "scan_type": "tcp_syn",
+  "ports": "22,80,443",
+  "target": "192.168.0.104",
+  "parameters": {
+    "scan_type": "tcp_syn",
+    "scan_profile": "custom_range",
+    "ports": "22,80,443",
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T16:35:22.824448+00:00"
+}

@@ -12,13 +12,13 @@ export interface CVE {
   exploitability_score: number | null;
   impact_score: number | null;
   cwe_id: string | null;
-  exploit_available: boolean;
+  exploit_available: boolean | null;
   metasploit_module: string | null;
   reference_urls: string[] | null;
   published_date: string | null;
   last_modified: string | null;
   epss_score: number | null;
-  kev_status: boolean;
+  kev_status: boolean | null;
   source: string | null;
   vendor: string | null;
   product: string | null;

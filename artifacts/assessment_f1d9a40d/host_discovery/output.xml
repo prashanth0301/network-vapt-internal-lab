@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Fri Jul 31 20:25:50 2026 as: E:\\Nmap\\nmap.EXE -sn -oX - -&#45;no-stylesheet 10.143.46.0/24 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.EXE -sn -oX - -&#45;no-stylesheet 10.143.46.0/24" start="1785509750" startstr="Fri Jul 31 20:25:50 2026" version="7.99" xmloutputversion="1.05">
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="10.143.46.153" addrtype="ipv4"/>
+<address addr="EE:8F:96:E5:28:09" addrtype="mac"/>
+<hostnames>
+</hostnames>
+<times srtt="14686" rttvar="15140" to="100000"/>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="10.143.46.132" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<runstats><finished time="1785509758" timestr="Fri Jul 31 20:25:58 2026" summary="Nmap done at Fri Jul 31 20:25:58 2026; 256 IP addresses (2 hosts up) scanned in 8.27 seconds" elapsed="8.27" exit="success"/><hosts up="2" down="254" total="256"/>
+</runstats>
+</nmaprun>

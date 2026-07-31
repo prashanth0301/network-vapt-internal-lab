@@ -2,6 +2,7 @@ import { useContext, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from '../components/ui/Button';
+import { APP_VERSION } from '../constants';
 import { Card } from '../components/ui/Card';
 import { AuthContext } from '../context/AuthContext';
 import { login } from '../services/authService';
@@ -102,7 +103,7 @@ export function Login() {
         </Card>
 
         <p className="text-center text-xs text-surface-400 mt-6">
-          Network VAPT Platform v1.0.0
+          Network VAPT Platform v{APP_VERSION}
         </p>
       </div>
     </div>

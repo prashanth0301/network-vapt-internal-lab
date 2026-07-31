@@ -1,0 +1,1 @@
+E:\Nmap\nmap.EXE -sn -n --max-retries 0 --max-rtt-timeout 1000ms --min-parallelism 100 --host-timeout 8s -oX - --no-stylesheet 192.168.0.0/24

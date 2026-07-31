@@ -25,7 +25,7 @@ export interface Service {
 
 export interface PortScanRequest {
   target: string;
-  scan_type: 'tcp_syn' | 'tcp_connect' | 'udp_scan' | 'version_detection';
+  scan_type: 'tcp_syn' | 'tcp_connect' | 'udp_scan';
   scan_profile: 'top_ports' | 'custom_range' | 'all_ports';
   ports?: string;
   extra_args?: string[];

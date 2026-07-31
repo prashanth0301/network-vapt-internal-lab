@@ -1,0 +1,1 @@
+E:\Nmap\nmap.EXE -sT -T4 -p 22,80,443 -oX - --no-stylesheet 192.168.56.196

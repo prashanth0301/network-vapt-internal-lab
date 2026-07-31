@@ -31,6 +31,7 @@ async def list_vulnerabilities(
     host_id: Optional[str] = Query(None, description="Filter by host UUID"),
     service_name: Optional[str] = Query(None, description="Filter by service name"),
     search: Optional[str] = Query(None, description="Search in title and description"),
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     sort_by: str = Query("severity", description="Sort field"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -47,6 +48,7 @@ async def list_vulnerabilities(
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
+        assessment_id=assessment_id,
     )
     items = [_vuln_to_response(v) for v in vulns]
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -56,15 +58,21 @@ async def list_vulnerabilities(
     )
 
 
-@router.get("/{vuln_id}", response_model=SuccessResponse[VulnerabilityResponse])
-async def get_vulnerability(
-    vuln_id: str,
+@router.get("/summary", response_model=SuccessResponse[VulnerabilitySummaryResponse])
+async def vulnerability_summary(
+    assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
     db: AsyncSession = Depends(get_db),
 ):
-    vuln = await get_vulnerability_by_id(db, vuln_id)
-    if not vuln:
-        return SuccessResponse(data=None, message=f"Vulnerability '{vuln_id}' not found")
-    return SuccessResponse(data=_vuln_to_response(vuln), message="Vulnerability retrieved")
+    summary = await get_vulnerability_summary(db, assessment_id)
+    return SuccessResponse(data=summary, message="Vulnerability summary retrieved")
+
+
+@router.get("/scanners", response_model=SuccessResponse[list[str]])
+async def list_scanners(
+    db: AsyncSession = Depends(get_db),
+):
+    scanners = await get_all_scanners(db)
+    return SuccessResponse(data=scanners, message=f"Found {len(scanners)} scanners")
 
 
 @router.get("/by-host/{host_id}", response_model=SuccessResponse[list[VulnerabilityResponse]])
@@ -97,20 +105,15 @@ async def list_vulnerabilities_by_assessment(
     return SuccessResponse(data=items, message=f"Found {len(items)} vulnerabilities for assessment")
 
 
-@router.get("/summary", response_model=SuccessResponse[VulnerabilitySummaryResponse])
-async def vulnerability_summary(
+@router.get("/{vuln_id}", response_model=SuccessResponse[VulnerabilityResponse])
+async def get_vulnerability(
+    vuln_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    summary = await get_vulnerability_summary(db)
-    return SuccessResponse(data=summary, message="Vulnerability summary retrieved")
-
-
-@router.get("/scanners", response_model=SuccessResponse[list[str]])
-async def list_scanners(
-    db: AsyncSession = Depends(get_db),
-):
-    scanners = await get_all_scanners(db)
-    return SuccessResponse(data=scanners, message=f"Found {len(scanners)} scanners")
+    vuln = await get_vulnerability_by_id(db, vuln_id)
+    if not vuln:
+        return SuccessResponse(data=None, message=f"Vulnerability '{vuln_id}' not found")
+    return SuccessResponse(data=_vuln_to_response(vuln), message="Vulnerability retrieved")
 
 
 @router.post("/scan", response_model=SuccessResponse[dict])
@@ -127,19 +130,26 @@ async def start_vulnerability_scan(
             "ports": body.ports,
         },
     )
+    await assessment_manager.persist_assessment(assessment.id)
 
     logger.info(
-        "Created vulnerability assessment: {id} for target {target}",
+        "Assessment created: {id} - Vulnerability Assessment for target {target}",
         id=assessment.id,
         target=body.target,
+    )
+
+    record = await assessment_manager.start_assessment(assessment.id)
+    await assessment_manager.persist_assessment(assessment.id)
+    logger.info(
+        "Assessment started: {id} - Vulnerability Assessment pipeline launched",
+        id=assessment.id,
     )
 
     return SuccessResponse(
         data={
             "assessment_id": assessment.id,
             "target": body.target,
-            "status": assessment.status.value,
-            "message": "Vulnerability assessment created. Use GET /assessments/{id} to track progress.",
+            "status": record.status.value,
         },
         message="Vulnerability scan initiated",
     )

@@ -10,11 +10,13 @@ export async function getServices(
   sortOrder = 'asc',
   page = 1,
   perPage = 20,
+  assessmentId?: string,
 ): Promise<PaginatedResponse<ServiceIntelligence>> {
   const params = new URLSearchParams();
   if (category) params.set('category', category);
   if (confidenceMin !== undefined) params.set('confidence_min', String(confidenceMin));
   if (search) params.set('search', search);
+  if (assessmentId) params.set('assessment_id', assessmentId);
   params.set('sort_by', sortBy);
   params.set('sort_order', sortOrder);
   params.set('page', String(page));
@@ -38,8 +40,10 @@ export async function getServicesByAssessment(assessmentId: string): Promise<Api
   return response.data;
 }
 
-export async function getCategories(): Promise<ApiResponse<string[]>> {
-  const response = await apiClient.get<ApiResponse<string[]>>('/services/categories');
+export async function getCategories(assessmentId?: string): Promise<ApiResponse<string[]>> {
+  const params = new URLSearchParams();
+  if (assessmentId) params.set('assessment_id', assessmentId);
+  const response = await apiClient.get<ApiResponse<string[]>>(`/services/categories?${params}`);
   return response.data;
 }
 

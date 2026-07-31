@@ -1,0 +1,85 @@
+{
+  "host": "192.168.0.102",
+  "ports": [
+    {
+      "port": 7,
+      "protocol": "tcp",
+      "state": "filtered",
+      "service_name": null,
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 25,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "smtp",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 110,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "pop3",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 119,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "nntp",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 143,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "imap",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 465,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "smtps",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 563,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "snews",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 587,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "submission",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 993,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "imaps",
+      "product": null,
+      "version": null
+    },
+    {
+      "port": 995,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "pop3s",
+      "product": null,
+      "version": null
+    }
+  ]
+}
