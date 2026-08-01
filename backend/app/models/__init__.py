@@ -7,6 +7,7 @@ from app.models.exploit_run import ExploitRun
 from app.models.host import Host
 from app.models.log import Log
 from app.models.packet_capture import PacketCapture
+from app.models.packet import Conversation, Packet
 from app.models.port import Port
 from app.models.report import Report
 from app.models.scan import Scan
@@ -29,6 +30,8 @@ __all__ = [
     "Exploit",
     "ExploitRun",
     "PacketCapture",
+    "Packet",
+    "Conversation",
     "Report",
     "Log",
     "Setting",

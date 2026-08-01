@@ -82,3 +82,11 @@ class AssessmentStatusResponse(BaseModel):
 class PipelineResponse(BaseModel):
     scan_type: str
     stages: list[StageInfo]
+
+
+class AssessmentStatisticsResponse(BaseModel):
+    total: int
+    by_status: dict[str, int]
+    success_count: int
+    failure_count: int
+    active_count: int

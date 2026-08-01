@@ -1,0 +1,19 @@
+{
+  "assessment_id": "861db2b6-8c67-40d3-a69b-b75668c1a2e1",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_connect",
+  "ports": null,
+  "target": "192.168.0.104",
+  "parameters": {
+    "scan_type": "tcp_connect",
+    "scan_profile": "top_ports",
+    "ports": null,
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T18:23:19.916536+00:00",
+  "command": "E:\\Nmap\\nmap.EXE -sT -T4 --top-ports 1000 -oX - --no-stylesheet 192.168.0.104",
+  "scan_types_used": [
+    "tcp_connect"
+  ]
+}

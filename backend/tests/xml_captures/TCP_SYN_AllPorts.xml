@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Fri Jul 31 23:43:54 2026 as: E:\\Nmap\\nmap.exe -sS -T4 -p 1-65535 -oX - -&#45;no-stylesheet 127.0.0.1 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.exe -sS -T4 -p 1-65535 -oX - -&#45;no-stylesheet 127.0.0.1" start="1785521634" startstr="Fri Jul 31 23:43:54 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="65535" services="1-65535"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1785521636" endtime="1785521684"><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><extraports state="closed" count="65513">
+<extrareasons reason="reset" count="65513" proto="tcp" ports="1-134,136,138-444,446-901,903-911,913-3305,3307-5039,5041-5356,5358-5431,5433-7999,8001-12422,12424-14604,14606-14607,14609-27274,27276-33059,33061-49663,49668-49674,49676-49689,49691-63267,63269-65535"/>
+</extraports>
+<port protocol="tcp" portid="135"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="msrpc" method="table" conf="3"/></port>
+<port protocol="tcp" portid="137"><state state="filtered" reason="no-response" reason_ttl="0"/><service name="netbios-ns" method="table" conf="3"/></port>
+<port protocol="tcp" portid="445"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="microsoft-ds" method="table" conf="3"/></port>
+<port protocol="tcp" portid="902"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="iss-realsecure" method="table" conf="3"/></port>
+<port protocol="tcp" portid="912"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="apex-mesh" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3306"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="mysql" method="table" conf="3"/></port>
+<port protocol="tcp" portid="5040"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="5357"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="wsdapi" method="table" conf="3"/></port>
+<port protocol="tcp" portid="5432"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="postgresql" method="table" conf="3"/></port>
+<port protocol="tcp" portid="8000"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http-alt" method="table" conf="3"/></port>
+<port protocol="tcp" portid="12423"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="14605"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="14608"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="27275"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="33060"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="mysqlx" method="table" conf="3"/></port>
+<port protocol="tcp" portid="49664"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="49665"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="49666"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="49667"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="49675"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="49690"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+<port protocol="tcp" portid="63268"><state state="open" reason="syn-ack" reason_ttl="64"/></port>
+</ports>
+<times srtt="5143" rttvar="4699" to="100000"/>
+</host>
+<runstats><finished time="1785521684" timestr="Fri Jul 31 23:44:44 2026" summary="Nmap done at Fri Jul 31 23:44:44 2026; 1 IP address (1 host up) scanned in 49.94 seconds" elapsed="49.94" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

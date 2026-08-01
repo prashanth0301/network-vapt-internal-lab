@@ -1,0 +1,19 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "target": "127.0.0.1",
+  "command": "E:\\Nmap\\nmap.EXE -sS -T4 --top-ports 1000 -oX - --no-stylesheet 127.0.0.1",
+  "total_hosts_scanned": 1,
+  "total_ports_found": 8,
+  "total_services_found": 8,
+  "scan_details": [
+    {
+      "host": "127.0.0.1",
+      "ports_found": 8,
+      "services_found": 8,
+      "duration_seconds": 2.823812,
+      "command": "E:\\Nmap\\nmap.EXE -sS -T4 --top-ports 1000 -oX - --no-stylesheet 127.0.0.1"
+    }
+  ],
+  "errors": []
+}

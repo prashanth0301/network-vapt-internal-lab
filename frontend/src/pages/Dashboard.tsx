@@ -10,10 +10,11 @@ import { getHosts, getHostSummary } from '../services/hostService';
 import { getVulnerabilitySummary } from '../services/vulnerabilityService';
 import { getCVEStatistics, getHighRiskCVEs } from '../services/cveService';
 import { getExploitStatistics } from '../services/exploitService';
-import { getPorts } from '../services/portService';
-import { getAssessments } from '../services/assessmentService';
+import { getPorts, getPortsByAssessment } from '../services/portService';
+import { getAssessments, getAssessmentStatistics } from '../services/assessmentService';
+import { getServices } from '../services/serviceIntelligenceService';
 import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
-import type { Assessment } from '../types/assessment';
+import type { Assessment, AssessmentStatistics } from '../types/assessment';
 import type { CVE, CVEStatistics } from '../types/cve';
 import type { ExploitStatistics } from '../types/exploit';
 import type { HealthResponse } from '../types/health';
@@ -46,6 +47,8 @@ export function Dashboard() {
   const [highRiskCves, setHighRiskCves] = useState<CVE[]>([]);
   const [exploitStats, setExploitStats] = useState<ExploitStatistics | null>(null);
   const [recentScans, setRecentScans] = useState<Assessment[]>([]);
+  const [servicesTotal, setServicesTotal] = useState(0);
+  const [assessmentStats, setAssessmentStats] = useState<AssessmentStatistics | null>(null);
   const tick = useAssessmentChangeTick();
 
   useEffect(() => {
@@ -54,13 +57,17 @@ export function Dashboard() {
       fetchSafe(checkHealth, null),
       fetchSafe(() => getHosts(assessmentId).then(r => r.data), []),
       fetchSafe(() => getHostSummary(assessmentId).then(r => r.data), null),
-      fetchSafe(() => getPorts(assessmentId).then(r => r.data), []),
+      fetchSafe(() => (assessmentId
+        ? getPortsByAssessment(assessmentId).then(r => r.data)
+        : getPorts().then(r => r.data)), []),
       fetchSafe(() => getVulnerabilitySummary(assessmentId).then(r => r.data), null),
       fetchSafe(() => getCVEStatistics(assessmentId).then(r => r.data), null),
       fetchSafe(() => getHighRiskCVEs(5, assessmentId).then(r => r.data), []),
       fetchSafe(() => getExploitStatistics(assessmentId).then(r => r.data), null),
       fetchSafe(() => getAssessments(undefined, undefined, 1, 4).then(r => r.data), []),
-    ]).then(([healthRes, hostsData, summaryData, portsData, vulnData, cveData, highRiskData, expData, scansData]) => {
+      fetchSafe(() => getServices(undefined, undefined, undefined, 'name', 'asc', 1, 1).then(r => r.pagination.total), 0),
+      fetchSafe(() => getAssessmentStatistics().then(r => r.data), null),
+    ]).then(([healthRes, hostsData, summaryData, portsData, vulnData, cveData, highRiskData, expData, scansData, servicesCount, assmtStats]) => {
       setHealth(healthRes);
       setHosts(hostsData);
       setSummary(summaryData);
@@ -70,6 +77,8 @@ export function Dashboard() {
       setHighRiskCves(highRiskData);
       setExploitStats(expData);
       setRecentScans(scansData);
+      setServicesTotal(servicesCount);
+      setAssessmentStats(assmtStats);
     }).finally(() => setLoading(false));
   }, [tick]);
 
@@ -116,6 +125,29 @@ export function Dashboard() {
           title="Open Findings"
           value={String(vulnSummary?.open_count ?? 0)}
           subtitle={`Avg CVSS: ${vulnSummary?.average_cvss ?? '—'}`}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Services Detected"
+          value={String(servicesTotal)}
+          subtitle="Enriched service intelligence"
+        />
+        <StatCard
+          title="Total Assessments"
+          value={String(assessmentStats?.total ?? 0)}
+          subtitle={`${assessmentStats?.active_count ?? 0} active`}
+        />
+        <StatCard
+          title="Successful Scans"
+          value={String(assessmentStats?.success_count ?? 0)}
+          subtitle="Completed assessments"
+        />
+        <StatCard
+          title="Failed Scans"
+          value={String(assessmentStats?.failure_count ?? 0)}
+          subtitle="Errored assessments"
         />
       </div>
 

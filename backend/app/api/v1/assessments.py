@@ -6,6 +6,7 @@ from app.core.dependencies import get_db
 from app.schemas.assessment import (
     AssessmentCreate,
     AssessmentResponse,
+    AssessmentStatisticsResponse,
     AssessmentStatusResponse,
     PipelineResponse,
 )
@@ -97,6 +98,28 @@ async def list_assessments(
     return SuccessResponse(
         data=items,
         message=f"Found {total} assessments",
+    )
+
+
+@router.get(
+    "/statistics",
+    response_model=SuccessResponse[AssessmentStatisticsResponse],
+    summary="Get assessment statistics",
+)
+async def assessment_statistics(
+    db=Depends(get_db),
+):
+    counts = await assessment_manager.get_status_counts()
+    stats = AssessmentStatisticsResponse(
+        total=sum(counts.values()),
+        by_status=counts,
+        success_count=counts.get("completed", 0),
+        failure_count=counts.get("failed", 0),
+        active_count=counts.get("running", 0) + counts.get("pending", 0),
+    )
+    return SuccessResponse(
+        data=stats,
+        message="Assessment statistics retrieved",
     )
 
 

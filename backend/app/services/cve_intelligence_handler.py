@@ -4,6 +4,7 @@ from typing import Optional
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from app.core.database import async_session_factory
 from app.models.cve import CVE
@@ -35,7 +36,11 @@ async def cve_intelligence_handler(
         tracker.update_stage_progress("cve_intelligence", 5.0)
 
     async with async_session_factory() as session:
-        vulns_query = select(Vulnerability).where(Vulnerability.cve_ids.isnot(None))
+        vulns_query = (
+            select(Vulnerability)
+            .where(Vulnerability.cve_ids.isnot(None))
+            .options(joinedload(Vulnerability.host))
+        )
         if assessment_id:
             try:
                 vulns_query = vulns_query.where(Vulnerability.scan_id == uuid.UUID(assessment_id))

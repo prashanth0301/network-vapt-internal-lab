@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.database import async_session_factory
 from app.models.scan import Scan
@@ -237,6 +237,24 @@ class AssessmentManager:
         page_items = results[start:end]
 
         return page_items, total
+
+    async def get_status_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._assessments.values():
+            counts[record.status.value] = counts.get(record.status.value, 0) + 1
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(Scan.status, func.count(Scan.id)).group_by(Scan.status)
+                )
+                for status, count in result:
+                    counts[status] = counts.get(status, 0) + count
+        except Exception as exc:
+            logger.error(
+                "Failed to load persisted assessment statistics: {error}",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        return counts
 
     @staticmethod
     def _record_from_scan(scan: Scan) -> AssessmentRecord:

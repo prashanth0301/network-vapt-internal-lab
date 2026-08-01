@@ -1,0 +1,19 @@
+{
+  "assessment_id": "d99a3bde-069b-424f-b2c6-a0c0f13e2520",
+  "stage": "port_scan",
+  "scan_profile": "custom_range",
+  "scan_type": "udp_scan",
+  "ports": "22,80,443",
+  "target": "192.168.0.104",
+  "parameters": {
+    "scan_type": "udp_scan",
+    "scan_profile": "custom_range",
+    "ports": "22,80,443",
+    "extra_args": null
+  },
+  "start_time": "2026-07-31T18:24:04.953536+00:00",
+  "command": "E:\\Nmap\\nmap.EXE -sU -T4 -p 22,80,443 -oX - --no-stylesheet 192.168.0.104",
+  "scan_types_used": [
+    "udp_scan"
+  ]
+}

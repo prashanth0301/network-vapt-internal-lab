@@ -231,13 +231,16 @@ async def _upsert_host(
     nmap_host: NmapHostResult,
     assessment_id: str,
 ) -> Host:
+    scan_uuid = uuid.UUID(assessment_id) if assessment_id else None
     result = await session.execute(
-        select(Host).where(Host.ip_address == nmap_host.ip_address)
+        select(Host).where(
+            Host.ip_address == nmap_host.ip_address,
+            Host.scan_id == scan_uuid,
+        )
     )
     existing = result.scalar_one_or_none()
 
     if existing:
-        existing.scan_id = uuid.UUID(assessment_id) if assessment_id else existing.scan_id
         existing.hostname = nmap_host.hostname or existing.hostname
         existing.mac_address = nmap_host.mac_address or existing.mac_address
         existing.vendor = nmap_host.vendor or existing.vendor

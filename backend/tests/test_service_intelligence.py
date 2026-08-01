@@ -8,6 +8,7 @@ from app.models.service import Service
 from app.services.service_intelligence_service import (
     CATEGORY_MAP,
     SERVICE_NAME_MAP,
+    analyze_banner,
     calculate_confidence,
     categorize_service,
     enrich_service,
@@ -202,6 +203,72 @@ class TestVersionHandling:
         assert extract_os_from_version(None) is None
 
 
+class TestBannerAnalysis:
+    def test_ssh_banner(self):
+        result = analyze_banner("SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6")
+        assert result["protocol"] == "SSH"
+        assert result["product"] == "OpenSSH"
+        assert result["version"] == "8.9p1"
+        assert result["os"] == "Ubuntu"
+
+    def test_http_server_header(self):
+        result = analyze_banner("HTTP/1.1 200 OK\r\nServer: Apache/2.4.52 (Ubuntu)\r\n")
+        assert result["product"] == "Apache"
+        assert result["version"] == "2.4.52"
+
+    def test_http_nginx_header(self):
+        result = analyze_banner("Server: nginx/1.18.0")
+        assert result["product"] == "nginx"
+        assert result["version"] == "1.18.0"
+
+    def test_ftp_vsftpd_banner(self):
+        result = analyze_banner("220 (vsFTPd 3.0.3)")
+        assert result["protocol"] == "FTP"
+        assert result["product"] == "vsFTPd"
+        assert result["version"] == "3.0.3"
+
+    def test_ftp_proftpd_banner(self):
+        result = analyze_banner("220 ProFTPD 1.3.5e Server (Debian)")
+        assert result["product"] == "ProFTPD"
+        assert result["version"] == "1.3.5e"
+
+    def test_postgres_banner(self):
+        result = analyze_banner("PostgreSQL 14.5 on x86_64-pc-linux-gnu")
+        assert result["product"] == "PostgreSQL"
+        assert result["version"] == "14.5"
+
+    def test_smtp_banner(self):
+        result = analyze_banner("220 mail.example.com ESMTP Postfix")
+        assert result["protocol"] == "SMTP"
+        assert result["product"] == "Postfix"
+        assert result["version"] is None
+
+    def test_generic_product_slash_version(self):
+        result = analyze_banner("MongoDB 5.0.14")
+        assert result["product"] == "MongoDB"
+        assert result["version"] == "5.0.14"
+
+    def test_bare_version_banner(self):
+        result = analyze_banner("5.7.36-0ubuntu0.18.04.1")
+        assert result["product"] is None
+        assert result["version"] == "5.7.36"
+
+    def test_none(self):
+        result = analyze_banner(None)
+        assert result["product"] is None
+        assert result["version"] is None
+
+    def test_empty(self):
+        result = analyze_banner("")
+        assert result["product"] is None
+        assert result["version"] is None
+
+    def test_garbage(self):
+        result = analyze_banner("random text without hints")
+        assert result["product"] is None
+        assert result["version"] is None
+
+
 class TestConfidenceScoring:
     def test_known_service_product_version(self):
         assert calculate_confidence("SSH", "OpenSSH", "8.9p1") == 98
@@ -300,6 +367,39 @@ class TestEnrichService:
         enrich_service(service)
         assert service.normalized_name == "SSH"
         assert service.notes is None
+
+    def test_enrich_ssh_from_banner_when_no_product(self):
+        service = self._make_mock_service(
+            name="ssh",
+            banner="SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6",
+        )
+        enrich_service(service)
+        assert service.normalized_name == "SSH"
+        assert service.normalized_product == "OpenSSH"
+        assert service.normalized_version == "8.9p1"
+        assert service.confidence == 98
+        assert "Banner fingerprint" in (service.notes or "")
+
+    def test_enrich_http_from_banner_when_no_product(self):
+        service = self._make_mock_service(
+            name="http",
+            banner="HTTP/1.1 200 OK\r\nServer: Apache/2.4.52 (Ubuntu)\r\n",
+        )
+        enrich_service(service)
+        assert service.normalized_product == "Apache HTTP Server"
+        assert service.normalized_version == "2.4.52"
+
+    def test_enrich_keeps_explicit_product_over_banner(self):
+        service = self._make_mock_service(
+            name="ssh",
+            product="OpenSSH",
+            version="8.9",
+            banner="SSH-2.0-OpenSSH_8.9p1",
+        )
+        enrich_service(service)
+        assert service.normalized_product == "OpenSSH"
+        assert service.normalized_version == "8.9"
+        assert "Banner fingerprint" not in (service.notes or "")
 
     def test_notes_generated(self):
         notes = generate_notes(

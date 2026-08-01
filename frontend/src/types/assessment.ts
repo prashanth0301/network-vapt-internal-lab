@@ -50,3 +50,11 @@ export interface AssessmentCreateRequest {
   target: string;
   parameters?: Record<string, unknown>;
 }
+
+export interface AssessmentStatistics {
+  total: number;
+  by_status: Record<string, number>;
+  success_count: number;
+  failure_count: number;
+  active_count: number;
+}

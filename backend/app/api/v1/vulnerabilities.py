@@ -162,7 +162,7 @@ def _vuln_to_response(vuln) -> VulnerabilityResponse:
     port_protocol = None
 
     if vuln.host:
-        host_ip = vuln.host.ip_address
+        host_ip = str(vuln.host.ip_address)
         host_name = vuln.host.hostname
     if vuln.port:
         port_number = vuln.port.port

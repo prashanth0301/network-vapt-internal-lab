@@ -1,9 +1,14 @@
 import type { ApiResponse } from '../types/common';
-import type { Assessment, AssessmentCreateRequest } from '../types/assessment';
+import type { Assessment, AssessmentCreateRequest, AssessmentStatistics } from '../types/assessment';
 import apiClient from './api';
 
 export async function createAssessment(request: AssessmentCreateRequest): Promise<ApiResponse<Assessment>> {
   const response = await apiClient.post<ApiResponse<Assessment>>('/assessments', request);
+  return response.data;
+}
+
+export async function getAssessmentStatistics(): Promise<ApiResponse<AssessmentStatistics>> {
+  const response = await apiClient.get<ApiResponse<AssessmentStatistics>>('/assessments/statistics');
   return response.data;
 }
 

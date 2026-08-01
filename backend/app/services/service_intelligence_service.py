@@ -208,6 +208,100 @@ def extract_os_from_version(version_str: Optional[str]) -> Optional[str]:
     return None
 
 
+_SSH_BANNER_RE = re.compile(r"SSH-2\.0-(OpenSSH)[_]?([^\s]+)?", re.IGNORECASE)
+_FTP_BANNER_RE = re.compile(
+    r"\b(vsftpd|proftpd|pure-ftpd|filezilla server)\b[^\d]*(\d+(?:\.\d+)*[a-zA-Z]?)?",
+    re.IGNORECASE,
+)
+_PGSQL_BANNER_RE = re.compile(r"\bPostgreSQL\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
+_REDIS_BANNER_RE = re.compile(r"\bredis[_-]server[^\s]*\s+v?(\d+(?:\.\d+)*)", re.IGNORECASE)
+_MONGODB_BANNER_RE = re.compile(r"\bMongoDB\s+(\d+(?:\.\d+)*)", re.IGNORECASE)
+_HTTP_SERVER_HEADER_RE = re.compile(r"^[Ss]erver\s*:\s*(.+?)\s*$", re.MULTILINE)
+_SMTP_PRODUCT_RE = re.compile(
+    r"\b(Postfix|Exim|Sendmail|qmail|Microsoft ESMTP)\b", re.IGNORECASE
+)
+_PRODUCT_SLASH_VERSION_RE = re.compile(r"([A-Za-z][A-Za-z0-9._+ -]{1,60})/(\d[\w.+-]*)")
+_BARE_VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+)*")
+
+
+def analyze_banner(banner: Optional[str]) -> dict:
+    result = {"product": None, "version": None, "os": None, "protocol": None}
+    if not banner or not banner.strip():
+        return result
+    text = banner.strip()
+
+    banner_lower = text.lower()
+    if text.startswith("SSH-2.0"):
+        result["protocol"] = "SSH"
+    elif banner_lower.startswith(("220 ", "220-")):
+        if any(k in banner_lower for k in ("ftp", "vsftpd", "proftpd")):
+            result["protocol"] = "FTP"
+        elif any(k in banner_lower for k in ("esmtp", "smtp", "postfix", "exim", "sendmail", "mail")):
+            result["protocol"] = "SMTP"
+
+    result["os"] = extract_os_from_version(text)
+
+    match = _SSH_BANNER_RE.search(text)
+    if match:
+        result["product"] = match.group(1)
+        if match.group(2):
+            result["version"] = match.group(2).split(" ")[0]
+        return result
+
+    match = _PGSQL_BANNER_RE.search(text)
+    if match:
+        result["product"] = "PostgreSQL"
+        result["version"] = match.group(1)
+        return result
+
+    match = _REDIS_BANNER_RE.search(text)
+    if match:
+        result["product"] = "Redis"
+        result["version"] = match.group(1)
+        return result
+
+    match = _MONGODB_BANNER_RE.search(text)
+    if match:
+        result["product"] = "MongoDB"
+        result["version"] = match.group(1)
+        return result
+
+    match = _FTP_BANNER_RE.search(text)
+    if match:
+        result["product"] = match.group(1)
+        if match.group(2):
+            result["version"] = match.group(2)
+        return result
+
+    match = _HTTP_SERVER_HEADER_RE.search(text)
+    if match:
+        server = match.group(1).strip()
+        pm = re.match(r"([A-Za-z0-9._+-]+)/(\d[\w.+-]*)", server)
+        if pm:
+            result["product"] = pm.group(1)
+            result["version"] = pm.group(2)
+        else:
+            result["product"] = server.split(" ")[0]
+        return result
+
+    match = _SMTP_PRODUCT_RE.search(text)
+    if match:
+        result["product"] = match.group(1)
+        return result
+
+    match = _PRODUCT_SLASH_VERSION_RE.search(text)
+    if match:
+        result["product"] = match.group(1).strip()
+        result["version"] = match.group(2)
+        return result
+
+    match = _BARE_VERSION_RE.search(text)
+    if match and len(text) < 80:
+        result["version"] = match.group(0)
+
+    return result
+
+
 def categorize_service(normalized_name: Optional[str]) -> Optional[str]:
     if not normalized_name:
         return None
@@ -257,8 +351,21 @@ def enrich_service(service: Service) -> Service:
     normalized_product = normalize_product(service.product)
     normalized_version = extract_normalized_version(service.version)
     category = categorize_service(normalized_name)
-    confidence = calculate_confidence(normalized_name, normalized_product, service.version)
     os_from_version = extract_os_from_version(service.version)
+    banner_info = analyze_banner(service.banner)
+
+    banner_product = normalize_product(banner_info.get("product")) or banner_info.get("product")
+    banner_version = banner_info.get("version")
+    product_from_banner = banner_product and not normalized_product
+    version_from_banner = banner_version and not normalized_version
+    if banner_product and not normalized_product:
+        normalized_product = banner_product
+    if banner_version and not normalized_version:
+        normalized_version = extract_normalized_version(banner_version)
+    if banner_info.get("os") and not os_from_version:
+        os_from_version = banner_info["os"]
+
+    confidence = calculate_confidence(normalized_name, normalized_product, normalized_version or service.version)
     notes = generate_notes(
         original_name=service.name,
         original_product=service.product,
@@ -267,6 +374,19 @@ def enrich_service(service: Service) -> Service:
         normalized_product=normalized_product,
         os_from_version=os_from_version,
     )
+
+    notes_parts = list(notes.split("; ")) if notes else []
+    if banner_info.get("protocol") and service.banner:
+        notes_parts.append(f"Banner protocol detected: {banner_info['protocol']}")
+    if product_from_banner or version_from_banner:
+        derived = " ".join(
+            part
+            for part in (banner_product or banner_info.get("product"), banner_version)
+            if part
+        )
+        if derived:
+            notes_parts.append(f"Banner fingerprint: {derived}")
+    notes = "; ".join(notes_parts) or None
 
     service.normalized_name = normalized_name
     service.normalized_product = normalized_product

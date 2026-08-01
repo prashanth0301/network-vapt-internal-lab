@@ -1,0 +1,13 @@
+{
+  "host": "192.168.56.20",
+  "ports": [
+    {
+      "port": 22,
+      "protocol": "tcp",
+      "state": "open",
+      "service_name": "ssh",
+      "product": null,
+      "version": null
+    }
+  ]
+}

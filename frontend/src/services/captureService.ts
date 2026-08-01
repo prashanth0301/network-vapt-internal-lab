@@ -9,13 +9,65 @@ export interface PacketCapture {
   date: string;
   status: string;
   protocol_stats: Record<string, number>;
+  total_bytes: number;
+  avg_packet_size: number;
+  packets_per_second: number;
   scan_id: string | null;
+  conversation_count?: number;
+  started_at?: string | null;
+  ended_at?: string | null;
 }
 
 export interface ProtocolStat {
   protocol: string;
   percentage: number;
   packets: number;
+}
+
+export interface CapturePacket {
+  id: string;
+  seq: number;
+  timestamp: string | null;
+  src_ip: string | null;
+  dst_ip: string | null;
+  src_port: number | null;
+  dst_port: number | null;
+  protocol: string;
+  length: number;
+  info: string | null;
+}
+
+export interface CaptureConversation {
+  id: string;
+  src_ip: string | null;
+  dst_ip: string | null;
+  src_port: number | null;
+  dst_port: number | null;
+  protocol: string;
+  packets: number;
+  bytes: number;
+}
+
+export interface CapturePacketsPage {
+  items: CapturePacket[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface CaptureInterface {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface CaptureStatus {
+  status: string;
+  packets: number;
+  bytes: number;
+  duration_seconds: number;
+  started_at?: string | null;
+  interface?: string | null;
 }
 
 export async function getCaptures(assessmentId?: string): Promise<PacketCapture[]> {
@@ -32,6 +84,32 @@ export async function getCaptureProtocols(assessmentId?: string): Promise<Protoc
   return res.data?.data || [];
 }
 
+export async function getCapture(id: string): Promise<PacketCapture | null> {
+  const res = await apiClient.get(`/captures/${id}`);
+  return res.data?.data || null;
+}
+
+export async function getCapturePackets(
+  id: string,
+  page = 1,
+  perPage = 50,
+  protocol?: string,
+): Promise<CapturePacketsPage> {
+  const params = new URLSearchParams();
+  params.set('page', String(page));
+  params.set('per_page', String(perPage));
+  if (protocol) params.set('protocol', protocol);
+  const res = await apiClient.get(`/captures/${id}/packets?${params}`);
+  return (
+    res.data?.data || { items: [], total: 0, page, per_page: perPage }
+  );
+}
+
+export async function getCaptureConversations(id: string): Promise<CaptureConversation[]> {
+  const res = await apiClient.get(`/captures/${id}/conversations`);
+  return res.data?.data || [];
+}
+
 export async function uploadCapture(file: File, assessmentId?: string): Promise<{ data?: unknown; message: string }> {
   const form = new FormData();
   form.append('file', file);
@@ -40,6 +118,16 @@ export async function uploadCapture(file: File, assessmentId?: string): Promise<
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
+}
+
+export async function getCaptureInterfaces(): Promise<CaptureInterface[]> {
+  const res = await apiClient.get('/captures/interfaces');
+  return res.data?.data || [];
+}
+
+export async function getCaptureStatus(id: string): Promise<CaptureStatus | null> {
+  const res = await apiClient.get(`/captures/${id}/status`);
+  return res.data?.data || null;
 }
 
 export async function startLiveCapture(interfaceName: string, assessmentId?: string): Promise<{ data?: unknown; message: string }> {

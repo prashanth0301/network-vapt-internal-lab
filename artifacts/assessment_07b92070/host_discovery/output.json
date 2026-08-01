@@ -1,0 +1,15 @@
+{
+  "scan_type": "ping_sweep",
+  "target": "127.0.0.1",
+  "total_hosts": 1,
+  "hosts": [
+    {
+      "ip": "127.0.0.1",
+      "hostname": null,
+      "mac": null,
+      "vendor": null,
+      "os": "Linux / Unix",
+      "status": "up"
+    }
+  ]
+}

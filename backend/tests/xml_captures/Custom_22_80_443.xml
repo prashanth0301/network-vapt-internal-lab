@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Nmap 7.99 scan initiated Fri Jul 31 23:46:32 2026 as: E:\\Nmap\\nmap.exe -sS -T4 -p 22,80,443 -oX - -&#45;no-stylesheet 127.0.0.1 -->
+<nmaprun scanner="nmap" args="E:\\Nmap\\nmap.exe -sS -T4 -p 22,80,443 -oX - -&#45;no-stylesheet 127.0.0.1" start="1785521792" startstr="Fri Jul 31 23:46:32 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="3" services="22,80,443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1785521795" endtime="1785521795"><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><port protocol="tcp" portid="22"><state state="closed" reason="reset" reason_ttl="64"/><service name="ssh" method="table" conf="3"/></port>
+<port protocol="tcp" portid="80"><state state="closed" reason="reset" reason_ttl="64"/><service name="http" method="table" conf="3"/></port>
+<port protocol="tcp" portid="443"><state state="closed" reason="reset" reason_ttl="64"/><service name="https" method="table" conf="3"/></port>
+</ports>
+<times srtt="875" rttvar="3062" to="100000"/>
+</host>
+<runstats><finished time="1785521795" timestr="Fri Jul 31 23:46:35 2026" summary="Nmap done at Fri Jul 31 23:46:35 2026; 1 IP address (1 host up) scanned in 2.28 seconds" elapsed="2.28" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

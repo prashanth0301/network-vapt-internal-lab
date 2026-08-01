@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import shutil
@@ -85,8 +86,27 @@ async def cleanup_history(
                 "(SELECT id FROM hosts WHERE scan_id = :aid)"
             ), {"aid": assessment_id})
             await db.execute(text("DELETE FROM hosts WHERE scan_id = :aid"), {"aid": assessment_id})
+            capture_filepaths = await db.execute(
+                text("SELECT filepath FROM packet_captures WHERE scan_id = :aid"),
+                {"aid": assessment_id},
+            )
+            capture_files = [row[0] for row in capture_filepaths.fetchall() if row[0]]
+            await db.execute(text(
+                "DELETE FROM packets WHERE capture_id IN "
+                "(SELECT id FROM packet_captures WHERE scan_id = :aid)"
+            ), {"aid": assessment_id})
+            await db.execute(text(
+                "DELETE FROM conversations WHERE capture_id IN "
+                "(SELECT id FROM packet_captures WHERE scan_id = :aid)"
+            ), {"aid": assessment_id})
+            await db.execute(text("DELETE FROM packet_captures WHERE scan_id = :aid"), {"aid": assessment_id})
         from app.services.assessment import assessment_manager
 
+        for filepath in capture_files:
+            try:
+                Path(filepath).unlink(missing_ok=True)
+            except OSError as e:
+                logger.warning("Failed to delete capture file {path}: {error}", path=filepath, error=str(e))
         assessment_manager.delete_assessment(assessment_id)
         _delete_assessment_artifact_dir(assessment_id)
         logger.info("Deleted artifacts for assessment {id}", id=assessment_id)
@@ -101,6 +121,8 @@ async def cleanup_history(
             await db.execute(text("DELETE FROM ports"))
             await db.execute(text("DELETE FROM hosts"))
             await db.execute(text("DELETE FROM reports"))
+            await db.execute(text("DELETE FROM packets"))
+            await db.execute(text("DELETE FROM conversations"))
             await db.execute(text("DELETE FROM packet_captures"))
             await db.execute(text("DELETE FROM artifacts"))
             await db.execute(text("DELETE FROM scans"))
@@ -150,6 +172,14 @@ async def cleanup_history(
         hosts_deleted = host_result.rowcount
         await db.execute(
             text("DELETE FROM reports WHERE created_at BETWEEN :tf AND :tt"),
+            {"tf": time_from, "tt": time_to},
+        )
+        await db.execute(
+            text("DELETE FROM packets WHERE capture_id IN (SELECT id FROM packet_captures WHERE created_at BETWEEN :tf AND :tt)"),
+            {"tf": time_from, "tt": time_to},
+        )
+        await db.execute(
+            text("DELETE FROM conversations WHERE capture_id IN (SELECT id FROM packet_captures WHERE created_at BETWEEN :tf AND :tt)"),
             {"tf": time_from, "tt": time_to},
         )
         await db.execute(

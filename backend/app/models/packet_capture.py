@@ -23,6 +23,13 @@ class PacketCapture(UUIDMixin, TimestampMixin, Base):
     duration_seconds: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
+    total_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    avg_packet_size: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    packets_per_second: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
     protocol_stats: Mapped[Optional[dict]] = mapped_column(
         JSONB, nullable=True
     )
