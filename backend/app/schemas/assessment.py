@@ -63,10 +63,39 @@ class AssessmentResponse(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    progress_percent: Optional[float] = None
+    severity_counts: Optional[dict[str, int]] = None
     progress: Optional[AssessmentProgress] = None
     pipeline: Optional[list[StageInfo]] = None
 
     model_config = {"from_attributes": True}
+
+
+class AssessmentSummaryResponse(BaseModel):
+    id: str
+    name: str
+    scan_type: str
+    target: str
+    status: str
+    parameters: Optional[dict] = None
+    created_at: str
+    updated_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error_message: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    progress_percent: Optional[float] = None
+    progress: Optional[AssessmentProgress] = None
+    pipeline: Optional[list[StageInfo]] = None
+    severity_counts: dict[str, int] = {}
+    total_vulnerabilities: int = 0
+    hosts_count: int = 0
+    ports_count: int = 0
+    services_count: int = 0
+    reports_count: int = 0
+    exploits_count: int = 0
+    captures_count: int = 0
 
 
 class AssessmentStatusResponse(BaseModel):

@@ -5,6 +5,7 @@ from app.api.v1.assessments import router as assessments_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.captures import router as captures_router
 from app.api.v1.cves import router as cves_router
+from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.exploits import router as exploits_router
 from app.api.v1.health import router as health_router
 from app.api.v1.history import router as history_router
@@ -13,6 +14,7 @@ from app.api.v1.ports import router as ports_router
 from app.api.v1.reports_api import router as reports_router
 from app.api.v1.services import router as services_router
 from app.api.v1.settings import router as settings_router
+from app.api.v1.users_api import router as users_router
 from app.api.v1.vulnerabilities import router as vulnerabilities_router
 
 v1_router = APIRouter()
@@ -22,6 +24,7 @@ v1_router.include_router(assessments_router)
 v1_router.include_router(auth_router)
 v1_router.include_router(captures_router)
 v1_router.include_router(cves_router)
+v1_router.include_router(dashboard_router)
 v1_router.include_router(exploits_router)
 v1_router.include_router(history_router)
 v1_router.include_router(hosts_router)
@@ -29,4 +32,5 @@ v1_router.include_router(ports_router)
 v1_router.include_router(reports_router)
 v1_router.include_router(services_router)
 v1_router.include_router(settings_router)
+v1_router.include_router(users_router)
 v1_router.include_router(vulnerabilities_router)

@@ -6,3 +6,5 @@ export { getPorts, getPortById, getPortsByHost, getPortsByAssessment, startPortS
 export { getServices, getServiceById, getServicesByHost, getServicesByAssessment, getCategories, enrichServices } from './serviceIntelligenceService';
 export { getVulnerabilities, getVulnerabilityById, getVulnerabilitiesByHost, getVulnerabilitiesByAssessment, getVulnerabilitySummary, startVulnerabilityScan } from './vulnerabilityService';
 export { createAssessment, startAssessment, getAssessment, getAssessments, deleteAssessment } from './assessmentService';
+export { getSettings, saveSettings, resetSettings, getSystemInfo, uploadLogo, removeLogo, fetchLogoUrl } from './settingsService';
+export { getDashboardSummary } from './dashboardService';

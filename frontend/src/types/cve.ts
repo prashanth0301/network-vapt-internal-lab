@@ -32,6 +32,7 @@ export interface CVEStatistics {
   total_cves: number;
   severity_counts: Record<string, number>;
   kev_count: number;
+  exploit_count: number;
   average_cvss: number;
   average_epss: number;
   top_vendors: { vendor: string; count: number }[];

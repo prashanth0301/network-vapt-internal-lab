@@ -1,0 +1,19 @@
+{
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "target": "192.168.56.0/24",
+  "command": "E:\\Nmap\\nmap.EXE -sS -T4 --max-retries 2 --top-ports 1000 -oX - --no-stylesheet 192.168.56.0/24",
+  "total_hosts_scanned": 1,
+  "total_ports_found": 1,
+  "total_services_found": 1,
+  "scan_details": [
+    {
+      "host": "192.168.56.20",
+      "ports_found": 1,
+      "services_found": 1,
+      "duration_seconds": 3.0,
+      "command": "E:\\Nmap\\nmap.EXE -sS -T4 --max-retries 2 --top-ports 1000 -oX - --no-stylesheet 192.168.56.20"
+    }
+  ],
+  "errors": []
+}

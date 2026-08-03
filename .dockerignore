@@ -21,6 +21,7 @@ frontend/dist
 # Runtime data (bind-mounted at runtime, not baked into the image)
 backend/logs
 backend/captures
+backend/media
 reports
 screenshots
 wireshark

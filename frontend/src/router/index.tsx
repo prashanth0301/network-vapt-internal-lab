@@ -8,6 +8,7 @@ import { Error500 } from '../pages/Error500';
 import { Exploitation } from '../pages/Exploitation';
 import { Exploits } from '../pages/Exploits';
 import { History } from '../pages/History';
+import { HostDetailsPage } from '../pages/HostDetails';
 import { Hosts } from '../pages/Hosts';
 import { Login } from '../pages/Login';
 import { Packets } from '../pages/Packets';
@@ -36,6 +37,7 @@ const routes: RouteObject[] = [
       { index: true, element: protectedLayout(<Dashboard />) },
       { path: 'workspace', element: protectedLayout(<Workspace />) },
       { path: 'hosts', element: protectedLayout(<Hosts />) },
+      { path: 'hosts/:hostId', element: protectedLayout(<HostDetailsPage />) },
       { path: 'services', element: protectedLayout(<Services />) },
       { path: 'scanning', element: protectedLayout(<Scanning />) },
       { path: 'cves', element: protectedLayout(<Cves />) },

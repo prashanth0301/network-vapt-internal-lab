@@ -135,7 +135,7 @@ async def enrich_vulnerability_cves(
                 CVE.vuln_id == vuln.id,
             )
         )
-        if existing.scalar_one_or_none() is not None:
+        if existing.scalars().first() is not None:
             continue
         result = await enrich_cve(session, vuln.id, cve_id)
         if result is not None:
@@ -236,7 +236,25 @@ async def get_cve_by_id(
         result = await session.execute(
             select(CVE).where(CVE.cve_id == cve_id.upper())
         )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
+
+
+async def get_cve_by_vuln_and_id(
+    session: AsyncSession,
+    vuln_id: str,
+    cve_id: str,
+) -> Optional[CVE]:
+    try:
+        uid = uuid.UUID(str(vuln_id))
+    except (ValueError, AttributeError):
+        return None
+    result = await session.execute(
+        select(CVE).where(
+            CVE.vuln_id == uid,
+            CVE.cve_id == str(cve_id).upper(),
+        )
+    )
+    return result.scalars().first()
 
 
 async def get_cves_by_vulnerability(
@@ -262,6 +280,7 @@ async def get_cve_statistics(
                 "total_cves": 0,
                 "severity_counts": {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0},
                 "kev_count": 0,
+                "exploit_count": 0,
                 "average_cvss": 0.0,
                 "average_epss": 0.0,
                 "top_vendors": [],
@@ -274,6 +293,7 @@ async def get_cve_statistics(
     total = len(all_cves)
     severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
     kev_count = 0
+    exploit_count = 0
     total_cvss = 0.0
     cvss_count = 0
     total_epss = 0.0
@@ -288,6 +308,8 @@ async def get_cve_statistics(
             severity_counts[sev] = 1
         if cve.kev_status:
             kev_count += 1
+        if cve.exploit_available:
+            exploit_count += 1
         if cve.cvss_score is not None:
             total_cvss += cve.cvss_score
             cvss_count += 1
@@ -303,6 +325,7 @@ async def get_cve_statistics(
         "total_cves": total,
         "severity_counts": severity_counts,
         "kev_count": kev_count,
+        "exploit_count": exploit_count,
         "average_cvss": round(total_cvss / cvss_count, 1) if cvss_count > 0 else 0.0,
         "average_epss": round(total_epss / epss_count, 3) if epss_count > 0 else 0.0,
         "top_vendors": [{"vendor": v, "count": c} for v, c in top_vendors],

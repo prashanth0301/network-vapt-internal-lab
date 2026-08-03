@@ -40,8 +40,48 @@ export interface Assessment {
   started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
+  duration_seconds: number | null;
+  progress_percent: number | null;
+  severity_counts: Record<string, number> | null;
   progress: AssessmentProgress | null;
   pipeline: AssessmentPipelineStage[] | null;
+}
+
+export interface AssessmentSummary {
+  id: string;
+  name: string;
+  scan_type: string;
+  target: string;
+  status: string;
+  parameters: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  duration_seconds: number | null;
+  progress_percent: number | null;
+  progress: AssessmentProgress | null;
+  pipeline: AssessmentPipelineStage[] | null;
+  severity_counts: Record<string, number>;
+  total_vulnerabilities: number;
+  hosts_count: number;
+  ports_count: number;
+  services_count: number;
+  reports_count: number;
+  exploits_count: number;
+  captures_count: number;
+}
+
+export interface AssessmentListParams {
+  status?: string;
+  scanType?: string;
+  search?: string;
+  target?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  perPage?: number;
 }
 
 export interface AssessmentCreateRequest {

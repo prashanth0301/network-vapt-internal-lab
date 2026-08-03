@@ -15,7 +15,7 @@ from app.services.assessment.progress_tracker import ProgressTracker
 from app.services.risk_engine import risk_engine
 from app.services.threat_intelligence_service import (
     enrich_vulnerability_cves,
-    get_cve_by_id,
+    get_cve_by_vuln_and_id,
 )
 
 
@@ -98,7 +98,7 @@ async def cve_intelligence_handler(
             cve_records = []
             if vuln.cve_ids:
                 for cve_id in vuln.cve_ids:
-                    cve_record = await get_cve_by_id(session, cve_id)
+                    cve_record = await get_cve_by_vuln_and_id(session, vuln.id, cve_id)
                     if cve_record:
                         rs = risk_engine.calculate_for_cve(cve_record)
                         cve_record.remediation_priority = rs.priority

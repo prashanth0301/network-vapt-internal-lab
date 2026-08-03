@@ -15,10 +15,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     TokenResponse,
-    UserCreate,
     UserMeResponse,
-    UserResponse,
-    UserUpdate,
 )
 from app.schemas.common import SuccessResponse
 from app.services.auth import auth_service, get_current_user, require_permissions
@@ -155,156 +152,6 @@ async def get_me(
     )
 
 
-@router.get("/users", response_model=SuccessResponse[list[UserResponse]])
-async def list_users(
-    current_user: User = Depends(require_permissions(["manage:users"])),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
-    users = list(result.scalars().all())
-    items = [_user_to_response(u) for u in users]
-    return SuccessResponse(data=items, message=f"Found {len(items)} users")
-
-
-@router.get("/users/{user_id}", response_model=SuccessResponse[UserResponse])
-async def get_user(
-    user_id: str,
-    current_user: User = Depends(require_permissions(["manage:users"])),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        import uuid
-        uid = uuid.UUID(user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
-    if not user:
-        return SuccessResponse(data=None, message="User not found")
-    return SuccessResponse(data=_user_to_response(user), message="User retrieved")
-
-
-@router.post("/users", response_model=SuccessResponse[UserResponse])
-async def create_user(
-    request: UserCreate,
-    current_user: User = Depends(require_permissions(["manage:users"])),
-    db: AsyncSession = Depends(get_db),
-):
-    existing = await db.execute(
-        select(User).where(
-            (User.username == request.username) | (User.email == request.email)
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username or email already exists",
-        )
-
-    user = await auth_service.create_user(
-        db,
-        username=request.username,
-        email=request.email,
-        password=request.password,
-        full_name=request.full_name,
-        role=request.role,
-    )
-    await auth_service.log_audit(
-        db,
-        user_id=str(current_user.id),
-        action="user_created",
-        resource_type="user",
-        resource_id=str(user.id),
-        details={"username": user.username, "role": user.role},
-    )
-    await db.commit()
-    await db.refresh(user)
-    return SuccessResponse(
-        data=_user_to_response(user), message="User created"
-    )
-
-
-@router.put("/users/{user_id}", response_model=SuccessResponse[UserResponse])
-async def update_user(
-    user_id: str,
-    request: UserUpdate,
-    current_user: User = Depends(require_permissions(["manage:users"])),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        import uuid
-        uid = uuid.UUID(user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
-    if not user:
-        return SuccessResponse(data=None, message="User not found")
-
-    if request.email is not None:
-        user.email = request.email
-    if request.full_name is not None:
-        user.full_name = request.full_name
-    if request.role is not None:
-        user.role = request.role
-    if request.status is not None:
-        user.status = request.status
-    if request.password is not None:
-        user.password_hash = auth_service.hash_password(request.password)
-
-    await auth_service.log_audit(
-        db,
-        user_id=str(current_user.id),
-        action="user_updated",
-        resource_type="user",
-        resource_id=str(user.id),
-        details={"username": user.username},
-    )
-    await db.commit()
-    await db.refresh(user)
-    return SuccessResponse(
-        data=_user_to_response(user), message="User updated"
-    )
-
-
-@router.delete("/users/{user_id}", response_model=SuccessResponse[dict])
-async def delete_user(
-    user_id: str,
-    current_user: User = Depends(require_permissions(["manage:users"])),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        import uuid
-        uid = uuid.UUID(user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid user ID")
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
-    if not user:
-        return SuccessResponse(data=None, message="User not found")
-
-    if str(user.id) == str(current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete yourself",
-        )
-
-    await db.delete(user)
-    await auth_service.log_audit(
-        db,
-        user_id=str(current_user.id),
-        action="user_deleted",
-        resource_type="user",
-        resource_id=user_id,
-        details={"username": user.username},
-    )
-    await db.commit()
-    return SuccessResponse(data={}, message="User deleted")
-
-
 @router.get("/roles", response_model=SuccessResponse[dict])
 async def list_roles(
     current_user: User = Depends(require_permissions(["manage:users"])),
@@ -359,18 +206,3 @@ async def list_audit_logs(
         for log in logs
     ]
     return SuccessResponse(data=items, message=f"Found {len(items)} audit logs")
-
-
-def _user_to_response(user: User) -> UserResponse:
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        status=user.status,
-        last_login=user.last_login,
-        is_active=user.is_active,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
-    )

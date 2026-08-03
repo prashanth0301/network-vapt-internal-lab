@@ -1,0 +1,1 @@
+service_intelligence assessment=96a3f42a-d3dc-4d14-8e7b-10777f4fc267 target=192.168.56.0/24

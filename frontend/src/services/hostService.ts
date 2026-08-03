@@ -1,5 +1,5 @@
 import type { ApiResponse } from '../types/common';
-import type { Host, HostDiscoverRequest } from '../types/host';
+import type { Host, HostDetails, HostDiscoverRequest } from '../types/host';
 import apiClient from './api';
 
 export async function getHosts(assessmentId?: string): Promise<ApiResponse<Host[]>> {
@@ -11,6 +11,11 @@ export async function getHosts(assessmentId?: string): Promise<ApiResponse<Host[
 
 export async function getHostById(id: string): Promise<ApiResponse<Host>> {
   const response = await apiClient.get<ApiResponse<Host>>(`/hosts/${id}`);
+  return response.data;
+}
+
+export async function getHostDetails(id: string): Promise<ApiResponse<HostDetails>> {
+  const response = await apiClient.get<ApiResponse<HostDetails>>(`/hosts/${id}/details`);
   return response.data;
 }
 

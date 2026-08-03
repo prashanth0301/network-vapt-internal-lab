@@ -1,28 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
-import { Card } from '../components/ui/Card';
-import { StatCard } from '../components/ui/StatCard';
-import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Badge } from '../components/ui/Badge';
-import { checkHealth } from '../services/healthService';
-import { getHosts, getHostSummary } from '../services/hostService';
-import { getVulnerabilitySummary } from '../services/vulnerabilityService';
-import { getCVEStatistics, getHighRiskCVEs } from '../services/cveService';
-import { getExploitStatistics } from '../services/exploitService';
-import { getPorts, getPortsByAssessment } from '../services/portService';
-import { getAssessments, getAssessmentStatistics } from '../services/assessmentService';
-import { getServices } from '../services/serviceIntelligenceService';
-import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
-import type { Assessment, AssessmentStatistics } from '../types/assessment';
-import type { CVE, CVEStatistics } from '../types/cve';
-import type { ExploitStatistics } from '../types/exploit';
-import type { HealthResponse } from '../types/health';
-import type { Host } from '../types/host';
-import type { Port } from '../types/port';
-import type { VulnerabilitySummary } from '../types/vulnerability';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { AuthContext } from '../context/AuthContext';
+import { getApiError } from '../services/api';
+import { getDashboardSummary } from '../services/dashboardService';
+import { useAssessmentChangeTick } from '../services/assessmentStore';
+import type { DashboardSummary, PortSlice, ServiceSlice } from '../types/dashboard';
 
-const COLORS: Record<string, string> = {
+const SEVERITY_COLORS: Record<string, string> = {
   Critical: '#ef4444',
   High: '#f97316',
   Medium: '#eab308',
@@ -30,350 +33,586 @@ const COLORS: Record<string, string> = {
   Info: '#3b82f6',
 };
 
-const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Info'];
+const RISK_LEVEL_COLOR: Record<string, 'danger' | 'warning' | 'success' | 'info' | 'default'> = {
+  Critical: 'danger',
+  High: 'warning',
+  Medium: 'warning',
+  Low: 'success',
+  None: 'default',
+};
 
-async function fetchSafe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-  try { return await fn(); } catch { return fallback; }
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '—';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const diffSec = Math.max(0, (Date.now() - then) / 1000);
+  if (diffSec < 60) return 'just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+function statusVariant(status: string): 'success' | 'warning' | 'danger' | 'default' {
+  if (status === 'completed') return 'success';
+  if (status === 'running' || status === 'pending') return 'warning';
+  if (status === 'failed' || status === 'error' || status === 'cancelled') return 'danger';
+  return 'default';
 }
 
 export function Dashboard() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [hosts, setHosts] = useState<Host[]>([]);
-  const [ports, setPorts] = useState<Port[]>([]);
-  const [summary, setSummary] = useState<{ total_hosts: number; alive_hosts: number } | null>(null);
-  const [vulnSummary, setVulnSummary] = useState<VulnerabilitySummary | null>(null);
-  const [cveStats, setCveStats] = useState<CVEStatistics | null>(null);
-  const [highRiskCves, setHighRiskCves] = useState<CVE[]>([]);
-  const [exploitStats, setExploitStats] = useState<ExploitStatistics | null>(null);
-  const [recentScans, setRecentScans] = useState<Assessment[]>([]);
-  const [servicesTotal, setServicesTotal] = useState(0);
-  const [assessmentStats, setAssessmentStats] = useState<AssessmentStatistics | null>(null);
+  const { user } = useContext(AuthContext);
   const tick = useAssessmentChangeTick();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    const assessmentId = getActiveAssessmentId() ?? undefined;
-    Promise.all([
-      fetchSafe(checkHealth, null),
-      fetchSafe(() => getHosts(assessmentId).then(r => r.data), []),
-      fetchSafe(() => getHostSummary(assessmentId).then(r => r.data), null),
-      fetchSafe(() => (assessmentId
-        ? getPortsByAssessment(assessmentId).then(r => r.data)
-        : getPorts().then(r => r.data)), []),
-      fetchSafe(() => getVulnerabilitySummary(assessmentId).then(r => r.data), null),
-      fetchSafe(() => getCVEStatistics(assessmentId).then(r => r.data), null),
-      fetchSafe(() => getHighRiskCVEs(5, assessmentId).then(r => r.data), []),
-      fetchSafe(() => getExploitStatistics(assessmentId).then(r => r.data), null),
-      fetchSafe(() => getAssessments(undefined, undefined, 1, 4).then(r => r.data), []),
-      fetchSafe(() => getServices(undefined, undefined, undefined, 'name', 'asc', 1, 1).then(r => r.pagination.total), 0),
-      fetchSafe(() => getAssessmentStatistics().then(r => r.data), null),
-    ]).then(([healthRes, hostsData, summaryData, portsData, vulnData, cveData, highRiskData, expData, scansData, servicesCount, assmtStats]) => {
-      setHealth(healthRes);
-      setHosts(hostsData);
-      setSummary(summaryData);
-      setPorts(portsData);
-      setVulnSummary(vulnData);
-      setCveStats(cveData);
-      setHighRiskCves(highRiskData);
-      setExploitStats(expData);
-      setRecentScans(scansData);
-      setServicesTotal(servicesCount);
-      setAssessmentStats(assmtStats);
-    }).finally(() => setLoading(false));
-  }, [tick]);
+  const fetchSummary = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getDashboardSummary();
+      setSummary(res.data);
+      setLastUpdated(new Date());
+    } catch (e) {
+      setError(getApiError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const riskData = severityOrder.map((sev) => ({
-    name: sev,
-    value: vulnSummary?.severity_counts?.[sev] ?? 0,
-    color: COLORS[sev],
-  }));
+  useEffect(() => { fetchSummary(); }, [fetchSummary, tick]);
 
-  const totalVulns = vulnSummary?.total_vulnerabilities ?? 0;
-  const vulnSubtitle = vulnSummary
-    ? severityOrder.filter((s) => (vulnSummary.severity_counts?.[s] ?? 0) > 0)
-        .map((s) => `${vulnSummary.severity_counts[s]} ${s}`)
-        .join(' · ')
-    : 'No data';
-
-  if (loading) {
+  if (loading && !summary) {
     return (
       <div className="flex items-center justify-center h-64">
-        <LoadingSpinner size="md" text="Loading dashboard..." />
+        <LoadingSpinner size="md" text="Loading security dashboard..." />
       </div>
     );
   }
 
+  const data = summary ?? emptySummary();
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Live Hosts"
-          value={String(summary?.alive_hosts ?? 0)}
-          subtitle={`${summary?.total_hosts ?? 0} total hosts`}
-        />
-        <StatCard
-          title="Open Ports"
-          value={String(ports.filter((p) => p.state === 'open').length)}
-          subtitle={`${ports.length} total port records`}
-        />
-        <StatCard
-          title="Vulnerabilities"
-          value={String(totalVulns)}
-          subtitle={vulnSubtitle}
-        />
-        <StatCard
-          title="Open Findings"
-          value={String(vulnSummary?.open_count ?? 0)}
-          subtitle={`Avg CVSS: ${vulnSummary?.average_cvss ?? '—'}`}
-        />
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-xl font-semibold text-surface-900 dark:text-surface-100">
+            Security Overview
+          </h1>
+          <p className="text-sm text-surface-400">
+            {user ? `${user.username} · ` : ''}Last refreshed{' '}
+            {lastUpdated ? lastUpdated.toLocaleTimeString() : 'never'}
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={fetchSummary} loading={loading}>
+          Refresh
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Services Detected"
-          value={String(servicesTotal)}
-          subtitle="Enriched service intelligence"
-        />
-        <StatCard
-          title="Total Assessments"
-          value={String(assessmentStats?.total ?? 0)}
-          subtitle={`${assessmentStats?.active_count ?? 0} active`}
-        />
-        <StatCard
-          title="Successful Scans"
-          value={String(assessmentStats?.success_count ?? 0)}
-          subtitle="Completed assessments"
-        />
-        <StatCard
-          title="Failed Scans"
-          value={String(assessmentStats?.failure_count ?? 0)}
-          subtitle="Errored assessments"
-        />
-      </div>
+      {error && !summary && (
+        <div className="p-4 rounded-lg border border-critical/20 bg-critical/10 text-critical text-sm">
+          Failed to load dashboard: {error}
+          <button className="ml-3 underline" onClick={fetchSummary}>Retry</button>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total CVEs"
-          value={String(cveStats?.total_cves ?? 0)}
-          subtitle="Enriched intelligence"
-        />
-        <StatCard
-          title="Average CVSS"
-          value={String(cveStats?.average_cvss ?? '—')}
-          subtitle="CVE base score"
-        />
-        <StatCard
-          title="Average EPSS"
-          value={String(cveStats?.average_epss ?? '—')}
-          subtitle="Exploit probability"
-        />
-        <StatCard
-          title="KEV Count"
-          value={String(cveStats?.kev_count ?? 0)}
-          subtitle="Known exploited vulnerabilities"
-        />
-      </div>
+      <KpiRow data={data} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Verified Exploits"
-          value={String(exploitStats?.verified_count ?? 0)}
-          subtitle={`${exploitStats?.success_rate ?? 0}% success rate`}
-        />
-        <StatCard
-          title="Potential Exploits"
-          value={String(exploitStats?.total_exploits ?? 0)}
-          subtitle="Total exploit candidates"
-        />
-        <StatCard
-          title="Sessions Created"
-          value={String(exploitStats?.session_count ?? 0)}
-          subtitle="Active sessions"
-        />
-        <StatCard
-          title="Failed Attempts"
-          value={String(exploitStats?.failed_count ?? 0)}
-          subtitle="Verification failures"
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <SeverityPieCard data={data} />
+        <VulnerabilityTrendCard data={data} />
+        <TopOpenPortsCard data={data} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Risk Distribution" subtitle={`${totalVulns} total findings`}>
-          <div className="h-72">
-            {totalVulns > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={riskData.filter((d) => d.value > 0)}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {riskData.filter((d) => d.value > 0).map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-surface-400 text-sm">
-                No vulnerability data yet
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card title="Recent Scans" subtitle="Last 4 assessments">
-          <div className="space-y-3">
-            {recentScans.length > 0 ? recentScans.map((scan) => (
-              <div
-                key={scan.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">
-                    {scan.name}
-                  </p>
-                  <p className="text-xs text-surface-400 mt-0.5">
-                    {scan.target}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 ml-4">
-                  <Badge variant={scan.status === 'completed' ? 'success' : scan.status === 'running' ? 'warning' : 'default'}>
-                    {scan.status}
-                  </Badge>
-                  <span className="text-xs text-surface-400 whitespace-nowrap">
-                    {new Date(scan.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            )) : (
-              <div className="text-sm text-surface-400 text-center py-4">No assessments yet — create one from the Workspace</div>
-            )}
-          </div>
-        </Card>
-
-        <Card title="Most Affected Vendors" subtitle="Top vendors by CVE count">
-          <div className="space-y-2">
-            {cveStats?.top_vendors && cveStats.top_vendors.length > 0 ? (
-              cveStats.top_vendors.map((v) => (
-                <div key={v.vendor} className="flex items-center justify-between p-2 rounded bg-surface-50 dark:bg-surface-800/50">
-                  <span className="text-sm font-medium text-surface-700 dark:text-surface-300">{v.vendor}</span>
-                  <Badge variant="warning">{v.count}</Badge>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-surface-400 text-center py-4">No vendor data yet</p>
-            )}
-          </div>
-        </Card>
+        <ServiceDistributionCard data={data} />
+        <RecentAssessmentsCard data={data} />
+        <RecentReportsCard data={data} />
       </div>
 
-      <Card title="Host Summary" subtitle="Discovered hosts in the lab network">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-200 dark:border-surface-700">
-                <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">Host</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">IP</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">OS</th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Status</th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Latency</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
-              {hosts.map((host) => (
-                <tr key={host.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
-                  <td className="px-4 py-3 font-medium text-surface-900 dark:text-surface-100">{host.hostname || 'Unknown'}</td>
-                  <td className="px-4 py-3 text-surface-500 font-mono">{host.ip_address}</td>
-                  <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{host.os_name || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={host.is_alive ? 'success' : 'default'}>
-                      {host.is_alive ? 'Alive' : 'Down'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-center text-surface-600 dark:text-surface-400">
-                    {host.latency ? `${host.latency.toFixed(1)}ms` : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {highRiskCves.length > 0 && (
-        <Card title="Highest Risk CVEs" subtitle="CVSS ≥ 7.0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-surface-200 dark:border-surface-700">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">CVE ID</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">Description</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">CVSS</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Severity</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">EPSS</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">KEV</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-surface-500 uppercase">Vendor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
-                {highRiskCves.map((c) => (
-                  <tr key={c.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-primary-600 dark:text-primary-400">{c.cve_id}</td>
-                    <td className="px-4 py-3 max-w-xs truncate text-surface-600 dark:text-surface-400">{c.description || '—'}</td>
-                    <td className="px-4 py-3 text-center font-medium">{c.cvss_score ?? '—'}</td>
-                    <td className="px-4 py-3 text-center">
-                      <Badge variant={c.cvss_severity === 'Critical' ? 'danger' : c.cvss_severity === 'High' ? 'warning' : 'info'}>
-                        {c.cvss_severity || '—'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">{c.epss_score != null ? `${(c.epss_score * 100).toFixed(1)}%` : '—'}</td>
-                    <td className="px-4 py-3 text-center">{c.kev_status ? <Badge variant="danger">KEV</Badge> : '—'}</td>
-                    <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{c.vendor || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-
-      {loading ? (
-        <Card>
-          <LoadingSpinner size="sm" text="Connecting to backend..." />
-        </Card>
-      ) : health ? (
-        <Card title="Backend Status" subtitle="API health check">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-low" />
-              <span className="text-surface-600 dark:text-surface-400">API:</span>
-              <span className="font-medium">{health.services.api}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${health.database === 'connected' ? 'bg-low' : 'bg-critical'}`} />
-              <span className="text-surface-600 dark:text-surface-400">Database:</span>
-              <span className="font-medium">{health.database}</span>
-            </div>
-            <div className="text-surface-400">
-              v{health.version} · {health.uptime_seconds}s uptime
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <Card title="Backend Status">
-          <div className="flex items-center gap-2 text-sm text-critical">
-            <span className="w-2 h-2 rounded-full bg-critical" />
-            Backend unreachable — start the API server
-          </div>
-        </Card>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <TopVulnerableHostsCard data={data} />
+        <ScanDurationCard data={data} />
+        <ActivityTimelineCard data={data} />
+      </div>
     </div>
+  );
+}
+
+function emptySummary(): DashboardSummary {
+  return {
+    severity_distribution: [],
+    vulnerability_trend: [],
+    top_open_ports: [],
+    service_distribution: [],
+    recent_assessments: [],
+    recent_reports: [],
+    top_vulnerable_hosts: [],
+    risk_score: { score: 0, level: 'None', total: 0 },
+    critical_count: 0,
+    exploit_available_count: 0,
+    scan_duration_stats: { count: 0, average_seconds: null, min_seconds: null, max_seconds: null },
+    activity_timeline: [],
+    totals: {
+      vulnerabilities: 0, hosts: 0, open_ports: 0, services: 0, reports: 0, assessments: 0,
+    },
+  };
+}
+
+/* ------------------------------------------------------------------------- */
+/* KPI row: Risk Score, Critical counter, Exploit counter, Total vulns       */
+/* ------------------------------------------------------------------------- */
+
+function KpiRow({ data }: { data: DashboardSummary }) {
+  const risk = data.risk_score;
+  const riskPct = Math.min(risk.score, 100);
+  const ringColor =
+    risk.score >= 70 ? '#ef4444' : risk.score >= 45 ? '#f97316' : risk.score >= 20 ? '#eab308' : '#22c55e';
+  const circumference = 2 * Math.PI * 34;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="card p-5 flex items-center gap-4">
+        <div className="relative h-20 w-20 flex-shrink-0">
+          <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
+            <circle cx="40" cy="40" r="34" fill="none" strokeWidth="8"
+              className="stroke-surface-200 dark:stroke-surface-700" />
+            <circle cx="40" cy="40" r="34" fill="none" strokeWidth="8"
+              stroke={ringColor} strokeLinecap="round"
+              strokeDasharray={`${(riskPct / 100) * circumference} ${circumference}`} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-xl font-bold text-surface-900 dark:text-surface-100">{risk.score}</span>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Risk Score</p>
+          <div className="mt-1"><Badge variant={RISK_LEVEL_COLOR[risk.level] ?? 'default'}>{risk.level}</Badge></div>
+          <p className="text-xs text-surface-400 mt-1">{risk.total} findings assessed</p>
+        </div>
+      </div>
+
+      <div className="card p-5 flex items-center gap-4">
+        <div className="p-3 rounded-lg bg-critical/10 text-critical flex-shrink-0">
+          <span className="text-2xl">🔥</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Critical Vulnerabilities</p>
+          <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{data.critical_count}</p>
+          <p className="text-xs text-surface-400 mt-1">Require immediate attention</p>
+        </div>
+      </div>
+
+      <div className="card p-5 flex items-center gap-4">
+        <div className="p-3 rounded-lg bg-medium/10 text-medium flex-shrink-0">
+          <span className="text-2xl">💣</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Exploits Available</p>
+          <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{data.exploit_available_count}</p>
+          <p className="text-xs text-surface-400 mt-1">Public exploits verified</p>
+        </div>
+      </div>
+
+      <div className="card p-5 flex items-center gap-4">
+        <div className="p-3 rounded-lg bg-info/10 text-info flex-shrink-0">
+          <span className="text-2xl">🛡️</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Total Vulnerabilities</p>
+          <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{data.totals.vulnerabilities}</p>
+          <p className="text-xs text-surface-400 mt-1">
+            {data.totals.hosts} hosts · {data.totals.open_ports} open ports
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 1. Severity Pie Chart                                                     */
+/* ------------------------------------------------------------------------- */
+
+function SeverityPieCard({ data }: { data: DashboardSummary }) {
+  const slices = data.severity_distribution.filter((s) => s.count > 0);
+  const total = data.totals.vulnerabilities;
+
+  return (
+    <Card title="Severity Distribution" subtitle="Findings by severity">
+      <div className="h-72 relative">
+        {slices.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={slices}
+                  dataKey="count"
+                  nameKey="severity"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={62}
+                  outerRadius={95}
+                  paddingAngle={2}
+                >
+                  {slices.map((s) => (
+                    <Cell key={s.severity} fill={SEVERITY_COLORS[s.severity] ?? '#64748b'} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number, name: string) => [`${value} findings`, name]} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-3xl font-bold text-surface-900 dark:text-surface-100">{total}</span>
+              <span className="text-xs text-surface-400">findings</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full text-surface-400 text-sm">
+            No vulnerability data yet
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 2. Vulnerability Trend                                                    */
+/* ------------------------------------------------------------------------- */
+
+function VulnerabilityTrendCard({ data }: { data: DashboardSummary }) {
+  const points = data.vulnerability_trend.map((p) => ({
+    date: p.date.slice(5),
+    full: p.date,
+    count: p.count,
+  }));
+
+  return (
+    <Card title="Vulnerability Trend" subtitle="Last 14 days">
+      <div className="h-72">
+        {points.some((p) => p.count > 0) ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={points} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="vulnTrend" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#ef4444" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#64748b22" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <Tooltip
+                labelFormatter={(label) => {
+                  const p = points.find((x) => x.date === label);
+                  return p?.full ?? label;
+                }}
+              />
+              <Area type="monotone" dataKey="count" name="Findings" stroke="#ef4444"
+                strokeWidth={2} fill="url(#vulnTrend)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-full text-surface-400 text-sm">
+            No findings recorded in the last 14 days
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 3. Top Open Ports                                                         */
+/* ------------------------------------------------------------------------- */
+
+function TopOpenPortsCard({ data }: { data: DashboardSummary }) {
+  const ports: PortSlice[] = data.top_open_ports;
+
+  return (
+    <Card title="Top Open Ports" subtitle="Most common open ports across hosts">
+      <div className="h-72">
+        {ports.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={ports} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#64748b22" horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <YAxis
+                type="category"
+                dataKey="port"
+                width={54}
+                tick={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(port: number) => String(port)}
+              />
+              <Tooltip
+                cursor={{ fill: '#64748b11' }}
+                formatter={(value: number) => [`${value} hosts`, 'Open']}
+                labelFormatter={(port) => {
+                  const p = ports.find((x) => x.port === Number(port));
+                  return p?.label ? `Port ${port} (${p.label})` : `Port ${port}`;
+                }}
+              />
+              <Bar dataKey="count" name="Hosts" radius={[0, 4, 4, 0]} fill="#3b82f6" />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-full text-surface-400 text-sm">
+            No open ports detected
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 4. Service Distribution                                                   */
+/* ------------------------------------------------------------------------- */
+
+function ServiceDistributionCard({ data }: { data: DashboardSummary }) {
+  const services: ServiceSlice[] = data.service_distribution;
+  const max = Math.max(1, ...services.map((s) => s.count));
+
+  return (
+    <Card title="Service Distribution" subtitle="Top services by exposure">
+      {services.length > 0 ? (
+        <div className="space-y-3 mt-1">
+          {services.map((s) => (
+            <div key={s.name}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm text-surface-700 dark:text-surface-300 truncate mr-2">{s.name}</span>
+                <span className="text-xs font-mono text-surface-500">{s.count}</span>
+              </div>
+              <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden h-2">
+                <div
+                  className="h-full bg-primary-500 rounded-full transition-all duration-500"
+                  style={{ width: `${(s.count / max) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-48 text-surface-400 text-sm">
+          No services detected
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 5. Recent Assessments                                                     */
+/* ------------------------------------------------------------------------- */
+
+function RecentAssessmentsCard({ data }: { data: DashboardSummary }) {
+  const items = data.recent_assessments;
+
+  return (
+    <Card title="Recent Assessments" subtitle={`${data.totals.assessments} total`}>
+      <div className="space-y-3">
+        {items.length > 0 ? items.map((a) => (
+          <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{a.name}</p>
+              <p className="text-xs text-surface-400 mt-0.5 truncate">{a.target}</p>
+            </div>
+            <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+              <Badge variant={statusVariant(a.status)}>{a.status}</Badge>
+              <span className="text-xs text-surface-400 whitespace-nowrap">{formatRelative(a.created_at)}</span>
+            </div>
+          </div>
+        )) : (
+          <div className="text-sm text-surface-400 text-center py-4">
+            No assessments yet — create one from the Workspace
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 6. Recent Reports                                                         */
+/* ------------------------------------------------------------------------- */
+
+function RecentReportsCard({ data }: { data: DashboardSummary }) {
+  const items = data.recent_reports;
+
+  return (
+    <Card title="Recent Reports" subtitle={`${data.totals.reports} generated`}>
+      <div className="space-y-3">
+        {items.length > 0 ? items.map((r) => (
+          <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{r.title}</p>
+              <p className="text-xs text-surface-400 mt-0.5">{formatRelative(r.created_at)}</p>
+            </div>
+            <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+              <Badge variant="info">{r.report_type}</Badge>
+              <span className="text-xs font-mono text-surface-500 uppercase">{r.format}</span>
+              <span className="text-xs text-surface-400">{formatFileSize(r.file_size)}</span>
+            </div>
+          </div>
+        )) : (
+          <div className="text-sm text-surface-400 text-center py-4">
+            No reports generated yet
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 7. Top Vulnerable Hosts                                                   */
+/* ------------------------------------------------------------------------- */
+
+function TopVulnerableHostsCard({ data }: { data: DashboardSummary }) {
+  const hosts = data.top_vulnerable_hosts;
+  const max = Math.max(1, ...hosts.map((h) => h.count));
+
+  return (
+    <Card title="Top Vulnerable Hosts" subtitle="Hosts with most findings">
+      {hosts.length > 0 ? (
+        <div className="space-y-3 mt-1">
+          {hosts.map((h) => (
+            <div key={h.ip_address}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-sm text-surface-900 dark:text-surface-100">{h.ip_address}</span>
+                  {h.hostname && (
+                    <span className="text-xs text-surface-400 truncate">{h.hostname}</span>
+                  )}
+                </div>
+                <Badge variant={h.count >= 10 ? 'danger' : h.count >= 5 ? 'warning' : 'default'}>
+                  {h.count}
+                </Badge>
+              </div>
+              <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden h-2">
+                <div
+                  className="h-full bg-critical rounded-full transition-all duration-500"
+                  style={{ width: `${(h.count / max) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-48 text-surface-400 text-sm">
+          No hosts with vulnerabilities
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 11. Scan Duration Statistics                                              */
+/* ------------------------------------------------------------------------- */
+
+function ScanDurationCard({ data }: { data: DashboardSummary }) {
+  const stats = data.scan_duration_stats;
+
+  const rows = [
+    { label: 'Average', value: stats.average_seconds },
+    { label: 'Fastest', value: stats.min_seconds },
+    { label: 'Slowest', value: stats.max_seconds },
+  ];
+
+  return (
+    <Card title="Scan Duration Statistics" subtitle={`${stats.count} completed scans measured`}>
+      {stats.count > 0 ? (
+        <div className="space-y-4">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
+              <span className="text-sm text-surface-600 dark:text-surface-400">{row.label}</span>
+              <span className="font-mono text-sm font-semibold text-surface-900 dark:text-surface-100">
+                {formatDuration(row.value)}
+              </span>
+            </div>
+          ))}
+          <p className="text-xs text-surface-400">
+            Median-scope full assessments complete in around{' '}
+            {formatDuration(stats.average_seconds)} on average.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-48 text-surface-400 text-sm">
+          No completed scans yet
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/* 12. Latest Activity Timeline                                              */
+/* ------------------------------------------------------------------------- */
+
+function ActivityTimelineCard({ data }: { data: DashboardSummary }) {
+  const items = data.activity_timeline;
+
+  const iconFor = (action: string) => {
+    if (action.includes('login')) return '🔑';
+    if (action.includes('assessment') || action.includes('scan')) return '📡';
+    if (action.includes('report')) return '📄';
+    if (action.includes('settings')) return '⚙️';
+    if (action.includes('user')) return '👤';
+    if (action.includes('exploit')) return '💣';
+    return '•';
+  };
+
+  return (
+    <Card title="Latest Activity" subtitle="Recent platform events">
+      {items.length > 0 ? (
+        <div className="relative">
+          <div className="absolute left-[7px] top-1 bottom-1 w-px bg-surface-200 dark:bg-surface-700" />
+          <div className="space-y-4">
+            {items.map((item, idx) => (
+              <div key={idx} className="flex items-start gap-3 pl-0">
+                <div className="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-surface-100 dark:bg-surface-700 border border-surface-200 dark:border-surface-600 text-[9px] flex-shrink-0 mt-0.5">
+                  {iconFor(item.action)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-surface-800 dark:text-surface-200 font-medium break-words">
+                    {item.action.replace(/_/g, ' ')}
+                  </p>
+                  <p className="text-xs text-surface-400 mt-0.5">
+                    {item.user} · {formatRelative(item.timestamp)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-48 text-surface-400 text-sm">
+          No recent activity
+        </div>
+      )}
+    </Card>
   );
 }

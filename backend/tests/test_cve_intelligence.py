@@ -16,6 +16,7 @@ from app.services.threat_intelligence_service import (
     enrich_vulnerability_cves,
     get_all_cves,
     get_cve_by_id,
+    get_cve_by_vuln_and_id,
     get_cve_statistics,
     get_cves_by_vulnerability,
     get_high_risk_cves,
@@ -565,7 +566,7 @@ class TestEnrichCVE:
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
         mock_session.execute.return_value = MagicMock()
-        mock_session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value.scalars.return_value.first.return_value = None
         mock_session.flush = AsyncMock()
 
         canned = CVEResult(cve_id="CVE-2021-41773", cvss_score=7.5, source="NVD")
@@ -629,7 +630,7 @@ class TestCVEQueries:
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
         mock_session.execute.return_value = MagicMock()
-        mock_session.execute.return_value.scalar_one_or_none.return_value = mock_cve
+        mock_session.execute.return_value.scalars.return_value.first.return_value = mock_cve
 
         result = await get_cve_by_id(mock_session, "CVE-2021-41773")
         assert result is not None
@@ -640,7 +641,7 @@ class TestCVEQueries:
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
         mock_session.execute.return_value = MagicMock()
-        mock_session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value.scalars.return_value.first.return_value = None
 
         result = await get_cve_by_id(mock_session, str(uuid.uuid4()))
         assert result is None
@@ -655,6 +656,27 @@ class TestCVEQueries:
 
         result = await get_cves_by_vulnerability(mock_session, str(uuid.uuid4()))
         assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_get_cve_by_vuln_and_id(self):
+        mock_cve = _make_cve(cve_id="CVE-2021-41773")
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock()
+        mock_session.execute.return_value = MagicMock()
+        mock_session.execute.return_value.scalars.return_value.first.return_value = mock_cve
+
+        vuln_id = str(uuid.uuid4())
+        result = await get_cve_by_vuln_and_id(mock_session, vuln_id, "cve-2021-41773")
+        assert result is not None
+        assert result.cve_id == "CVE-2021-41773"
+
+    @pytest.mark.asyncio
+    async def test_get_cve_by_vuln_and_id_invalid_vuln(self):
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock()
+
+        result = await get_cve_by_vuln_and_id(mock_session, "not-a-uuid", "CVE-2021-41773")
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_high_risk_cves(self):

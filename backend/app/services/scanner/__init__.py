@@ -5,6 +5,7 @@ from app.services.scanner.base import (
     VulnerabilityScanner,
 )
 from app.services.scanner.openvas import OpenVASScanner
+from app.services.scanner.nmap_vuln import NmapVulnScanner
 
 __all__ = [
     "VulnerabilityScanner",
@@ -12,4 +13,5 @@ __all__ = [
     "ScanResult",
     "ScannerStatus",
     "OpenVASScanner",
+    "NmapVulnScanner",
 ]

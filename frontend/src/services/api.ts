@@ -42,10 +42,16 @@ export function getApiError(error: unknown): string {
   if (error instanceof AxiosError && error.response?.data) {
     const data = error.response.data as {
       error?: { message?: string };
-      detail?: string | Array<{ msg?: string }>;
+      detail?:
+        | string
+        | { message?: string; errors?: Record<string, string> }
+        | Array<{ msg?: string }>;
     };
     if (data.error?.message) return data.error.message;
     if (typeof data.detail === 'string') return data.detail;
+    if (typeof data.detail === 'object' && data.detail !== null && !Array.isArray(data.detail)) {
+      if (data.detail.message) return data.detail.message;
+    }
     if (Array.isArray(data.detail) && data.detail.length > 0) {
       return data.detail[0].msg || 'An unexpected error occurred';
     }

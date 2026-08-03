@@ -1,10 +1,11 @@
+import asyncio
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,8 @@ from app.models.service import Service
 from app.services.artifact_manager import artifact_manager
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
+from app.services.nmap_service import build_command, run_scan
+from app.services.port_scan_service import _upsert_port, _upsert_service
 
 SERVICE_NAME_MAP = {
     "http": "HTTP",
@@ -398,6 +401,186 @@ def enrich_service(service: Service) -> Service:
     return service
 
 
+async def _run_version_detection(
+    assessment_id: str,
+    parameters: Optional[dict],
+    tracker: Optional[ProgressTracker],
+) -> dict:
+    params = parameters or {}
+    if not params.get("version_scan_enabled", True):
+        return {"skipped": True, "reason": "version_scan_enabled is False"}
+    os_detection_enabled = params.get("os_detection_enabled", True)
+    try:
+        timeout = int(params.get("version_scan_timeout", 300))
+    except (TypeError, ValueError):
+        timeout = 300
+
+    try:
+        aid = uuid.UUID(assessment_id)
+    except (ValueError, TypeError):
+        return {"skipped": True, "reason": "invalid assessment id"}
+
+    async with async_session_factory() as session:
+        hosts_result = await session.execute(
+            select(Host)
+            .options(joinedload(Host.ports).joinedload(Port.services))
+            .where(Host.scan_id == aid, Host.is_alive == True)
+        )
+        hosts = list(hosts_result.unique().scalars().all())
+
+    host_targets = []
+    for host in hosts:
+        open_ports = sorted(
+            {
+                p.port
+                for p in (host.ports or [])
+                if p.state == "open" and p.protocol == "tcp"
+            }
+        )
+        if open_ports:
+            host_targets.append((host, open_ports))
+
+    if not host_targets:
+        return {"skipped": True, "reason": "no open TCP ports to fingerprint"}
+
+    total = len(host_targets)
+    semaphore = asyncio.Semaphore(3)
+    details = []
+    errors = []
+    ports_fingerprinted = 0
+    services_enriched = 0
+    os_updated = 0
+    commands_used = []
+
+    artifact_dir = artifact_manager.create_stage_directory(
+        assessment_id, "service_intelligence/version_detection"
+    )
+
+    async def scan_host(entry: tuple, idx: int) -> dict:
+        nonlocal ports_fingerprinted, services_enriched, os_updated
+        host, open_ports = entry
+        port_list = ",".join(str(p) for p in open_ports)
+        extra_args = ["-O", "--osscan-guess"] if os_detection_enabled else None
+        command_list = build_command(
+            "version_detection", str(host.ip_address), port_list, extra_args
+        )
+        command_str = " ".join(command_list)
+        commands_used.append(command_str)
+        artifact_manager.save_text(
+            artifact_dir,
+            f"command_{str(host.ip_address).replace('.', '_')}.txt",
+            command_str,
+        )
+
+        async with semaphore:
+            result = await run_scan(
+                scan_type="version_detection",
+                target=str(host.ip_address),
+                ports=port_list,
+                extra_args=extra_args,
+                timeout=timeout,
+            )
+
+        if result.error:
+            logger.warning(
+                "Version detection failed for {ip}: {error}",
+                ip=host.ip_address,
+                error=result.error,
+            )
+            errors.append({"host": str(host.ip_address), "error": result.error})
+            return {"host": str(host.ip_address), "error": result.error}
+
+        if not result.hosts:
+            return {"host": str(host.ip_address), "ports_scanned": len(open_ports)}
+
+        scanned_host = result.hosts[0]
+        detected = []
+        async with async_session_factory() as session:
+            for nmap_port in scanned_host.open_ports:
+                if nmap_port.state != "open":
+                    continue
+                upserted = await _upsert_port(session, host.id, nmap_port)
+                ports_fingerprinted += 1
+                if nmap_port.service_name or nmap_port.product or nmap_port.banner:
+                    service = await _upsert_service(session, upserted.id, nmap_port)
+                    await session.flush()
+                    services_enriched += 1
+                    detected.append({
+                        "port": nmap_port.port,
+                        "protocol": nmap_port.protocol,
+                        "service": nmap_port.service_name,
+                        "product": nmap_port.product,
+                        "version": nmap_port.version,
+                        "extra_info": nmap_port.extra_info,
+                        "tunnel": nmap_port.tunnel,
+                        "banner": (nmap_port.banner or "")[:200],
+                    })
+            if (
+                scanned_host.os_name
+                and (
+                    not host.os_name
+                    or (
+                        scanned_host.os_accuracy is not None
+                        and (host.os_accuracy or 0) < scanned_host.os_accuracy
+                    )
+                )
+            ):
+                await session.execute(
+                    update(Host)
+                    .where(Host.id == host.id)
+                    .values(
+                        os_name=scanned_host.os_name,
+                        os_version=scanned_host.os_version or host.os_version,
+                        os_accuracy=scanned_host.os_accuracy or host.os_accuracy,
+                    )
+                )
+                host.os_name = scanned_host.os_name
+                host.os_version = scanned_host.os_version or host.os_version
+                host.os_accuracy = scanned_host.os_accuracy or host.os_accuracy
+                os_updated += 1
+            await session.commit()
+
+        artifact_manager.save_json(
+            artifact_dir,
+            {"host": str(host.ip_address), "command": command_str, "detected": detected},
+            filename=f"versions_{str(host.ip_address).replace('.', '_')}.json",
+        )
+
+        if tracker:
+            progress = 12.0 + ((idx + 1) * (26.0 / total))
+            tracker.update_stage_progress("service_intelligence", min(progress, 38.0))
+
+        return {
+            "host": str(host.ip_address),
+            "ports_fingerprinted": len(scanned_host.open_ports),
+            "services_enriched": len(detected),
+            "os_detected": bool(scanned_host.os_name),
+            "command": command_str,
+        }
+
+    results = await asyncio.gather(*[scan_host(entry, idx) for idx, entry in enumerate(host_targets)])
+    for r in results:
+        details.append(r)
+
+    logger.info(
+        "Version detection completed: {enriched} services enriched across {hosts} hosts",
+        enriched=services_enriched,
+        hosts=len(results),
+    )
+
+    return {
+        "skipped": False,
+        "hosts_scanned": len(results),
+        "total_hosts": total,
+        "ports_fingerprinted": ports_fingerprinted,
+        "services_enriched": services_enriched,
+        "os_updated": os_updated,
+        "errors": errors,
+        "commands": commands_used,
+        "details": details,
+    }
+
+
 async def service_intelligence_handler(
     assessment_id: str,
     target: str,
@@ -434,6 +617,10 @@ async def service_intelligence_handler(
     if tracker:
         tracker.update_stage_progress("service_intelligence", 10.0)
 
+    version_summary = await _run_version_detection(assessment_id, parameters, tracker)
+    if version_summary.get("commands"):
+        command_str = version_summary["commands"][0]
+
     async with async_session_factory() as session:
         services_result = await session.execute(
             select(Service)
@@ -450,6 +637,7 @@ async def service_intelligence_handler(
             "status": "no_services",
             "total_services": 0,
             "total_enriched": 0,
+            "version_detection": version_summary,
         })
         async with async_session_factory() as session:
             await artifact_manager.store_metadata(
@@ -479,7 +667,7 @@ async def service_intelligence_handler(
     confidence_distribution = {"high": 0, "medium": 0, "low": 0, "unknown": 0}
     enriched_services_data = []
 
-    progress_per_service = 80.0 / total if total > 0 else 0
+    progress_per_service = 50.0 / total if total > 0 else 0
 
     async with async_session_factory() as session:
         for idx, service in enumerate(services):
@@ -515,7 +703,7 @@ async def service_intelligence_handler(
                         confidence_distribution["unknown"] += 1
 
                 if tracker:
-                    progress = 15.0 + ((idx + 1) * progress_per_service)
+                    progress = 45.0 + ((idx + 1) * progress_per_service)
                     tracker.update_stage_progress("service_intelligence", min(progress, 95.0))
 
             except Exception as e:
@@ -533,6 +721,7 @@ async def service_intelligence_handler(
         "total_enriched": enriched_count,
         "categories": categories_found,
         "confidence_distribution": confidence_distribution,
+        "version_detection": version_summary,
         "services": enriched_services_data,
     }
     artifact_manager.save_json(artifact_dir, results_json)
@@ -564,6 +753,19 @@ async def service_intelligence_handler(
         "total_enriched": enriched_count,
         "categories": categories_found,
         "confidence_distribution": confidence_distribution,
+        "version_detection": {
+            k: version_summary[k]
+            for k in (
+                "skipped",
+                "hosts_scanned",
+                "total_hosts",
+                "ports_fingerprinted",
+                "services_enriched",
+                "os_updated",
+                "errors",
+            )
+            if k in version_summary
+        },
     }
 
     logger.info(

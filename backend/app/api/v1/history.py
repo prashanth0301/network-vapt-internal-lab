@@ -64,51 +64,9 @@ async def cleanup_history(
     db: AsyncSession = Depends(get_db),
 ):
     if assessment_id:
-        async with db.begin():
-            await db.execute(text("DELETE FROM artifacts WHERE assessment_id = :aid"), {"aid": assessment_id})
-            await db.execute(text("DELETE FROM scans WHERE id = :aid"), {"aid": assessment_id})
-            await db.execute(text(
-                "DELETE FROM exploits WHERE host_id IN "
-                "(SELECT id FROM hosts WHERE scan_id = :aid)"
-            ), {"aid": assessment_id})
-            await db.execute(text(
-                "DELETE FROM cves WHERE vuln_id IN "
-                "(SELECT id FROM vulnerabilities WHERE scan_id = :aid)"
-            ), {"aid": assessment_id})
-            await db.execute(text("DELETE FROM vulnerabilities WHERE scan_id = :aid"), {"aid": assessment_id})
-            await db.execute(text(
-                "DELETE FROM services WHERE port_id IN "
-                "(SELECT id FROM ports WHERE host_id IN "
-                "(SELECT id FROM hosts WHERE scan_id = :aid))"
-            ), {"aid": assessment_id})
-            await db.execute(text(
-                "DELETE FROM ports WHERE host_id IN "
-                "(SELECT id FROM hosts WHERE scan_id = :aid)"
-            ), {"aid": assessment_id})
-            await db.execute(text("DELETE FROM hosts WHERE scan_id = :aid"), {"aid": assessment_id})
-            capture_filepaths = await db.execute(
-                text("SELECT filepath FROM packet_captures WHERE scan_id = :aid"),
-                {"aid": assessment_id},
-            )
-            capture_files = [row[0] for row in capture_filepaths.fetchall() if row[0]]
-            await db.execute(text(
-                "DELETE FROM packets WHERE capture_id IN "
-                "(SELECT id FROM packet_captures WHERE scan_id = :aid)"
-            ), {"aid": assessment_id})
-            await db.execute(text(
-                "DELETE FROM conversations WHERE capture_id IN "
-                "(SELECT id FROM packet_captures WHERE scan_id = :aid)"
-            ), {"aid": assessment_id})
-            await db.execute(text("DELETE FROM packet_captures WHERE scan_id = :aid"), {"aid": assessment_id})
-        from app.services.assessment import assessment_manager
+        from app.services.assessment_cleanup import delete_assessment_cascade
 
-        for filepath in capture_files:
-            try:
-                Path(filepath).unlink(missing_ok=True)
-            except OSError as e:
-                logger.warning("Failed to delete capture file {path}: {error}", path=filepath, error=str(e))
-        assessment_manager.delete_assessment(assessment_id)
-        _delete_assessment_artifact_dir(assessment_id)
+        await delete_assessment_cascade(db, assessment_id)
         logger.info("Deleted artifacts for assessment {id}", id=assessment_id)
         return SuccessResponse(data={"deleted_assessment": assessment_id}, message="Assessment history deleted")
 

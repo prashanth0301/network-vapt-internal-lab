@@ -77,6 +77,7 @@ class VulnerabilityScanner(ABC):
         target: str,
         ports: Optional[str] = None,
         scan_profile: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> ScanResult:
         pass
 

@@ -2,7 +2,7 @@ from typing import Optional
 
 from loguru import logger
 
-from app.services.scanner import OpenVASScanner, VulnerabilityScanner
+from app.services.scanner import NmapVulnScanner, OpenVASScanner, VulnerabilityScanner
 
 
 class ScannerManager:
@@ -71,3 +71,4 @@ class ScannerManager:
 
 scanner_manager = ScannerManager()
 scanner_manager.register("openvas", OpenVASScanner())
+scanner_manager.register("nmap", NmapVulnScanner())

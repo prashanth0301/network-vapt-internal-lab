@@ -1,0 +1,16 @@
+{
+  "assessment_id": "f4ba1d57-f6b7-4b95-baa5-f1e2c2a3ab14",
+  "stage": "port_scan",
+  "scan_profile": "top_ports",
+  "scan_type": "tcp_syn",
+  "ports": null,
+  "target": "192.168.56.0/24",
+  "parameters": {
+    "scan_type": "tcp_syn"
+  },
+  "start_time": "2026-08-03T16:45:53.053648+00:00",
+  "command": "E:\\Nmap\\nmap.EXE -Pn -sS -T4 --max-retries 2 --top-ports 1000 -oX - --no-stylesheet 192.168.56.0/24",
+  "scan_types_used": [
+    "tcp_syn"
+  ]
+}

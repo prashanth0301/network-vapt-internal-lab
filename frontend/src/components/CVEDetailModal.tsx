@@ -138,14 +138,21 @@ export function CVEDetailModal({ cveId, open, onClose }: CVEDetailModalProps) {
             </div>
           )}
 
-          {cve.exploit_available && (
-            <div>
-              <p className="text-xs font-medium text-surface-400 uppercase mb-1">Exploit</p>
-              <p className="text-sm text-surface-700 dark:text-surface-300">
-                {cve.metasploit_module ? `Metasploit: ${cve.metasploit_module}` : 'Exploit available'}
-              </p>
+          <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-surface-400 uppercase mb-1">Exploit Available</p>
+              <Badge variant={cve.exploit_available ? 'success' : 'default'}>
+                {cve.exploit_available ? 'Yes' : 'No'}
+              </Badge>
             </div>
-          )}
+            {cve.exploit_available && (
+              <p className="text-sm text-surface-700 dark:text-surface-300 mt-2">
+                {cve.metasploit_module
+                  ? <>Metasploit: <span className="font-mono">{cve.metasploit_module}</span></>
+                  : 'Public exploit identified by the exploit verification stage'}
+              </p>
+            )}
+          </div>
 
           {cve.reference_urls && cve.reference_urls.length > 0 && (
             <div>

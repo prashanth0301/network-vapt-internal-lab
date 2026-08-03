@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,28 +6,43 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import get_db
 from app.models.report import Report
-from app.models.host import Host
-from app.models.vulnerability import Vulnerability
 from app.schemas.common import SuccessResponse
+from app.services.report_service import (
+    REPORT_TYPE_LABELS,
+    collect_report_data,
+    payload_to_json,
+    render_html,
+    render_pdf,
+    _format_size,
+)
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
-REPORT_TYPE_LABELS = {
-    "executive": "Executive",
-    "technical": "Technical",
-    "compliance": "Compliance",
-}
+
+def _report_to_dict(r: Report) -> dict:
+    return {
+        "id": str(r.id),
+        "title": r.title,
+        "type": r.report_type,
+        "format": r.format,
+        "size": _format_size(r.file_size),
+        "date": r.created_at.isoformat() if r.created_at else "",
+        "status": "ready",
+        "filepath": r.filepath,
+        "assessment_id": str(r.scan_id) if r.scan_id else None,
+    }
 
 
 @router.get("", response_model=SuccessResponse[list[dict]])
 async def list_reports(
     assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
+    report_type: Optional[str] = Query(None, description="Filter by report type (executive, technical, compliance)"),
+    search: Optional[str] = Query(None, description="Search report titles"),
     sort_by: str = Query("created_at"),
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
@@ -41,27 +55,91 @@ async def list_reports(
             query = query.where(Report.scan_id == uuid.UUID(assessment_id))
         except ValueError:
             return SuccessResponse(data=[], message="Invalid assessment_id format")
+    if report_type:
+        query = query.where(Report.report_type == report_type.capitalize())
+    if search:
+        query = query.where(Report.title.ilike(f"%{search.strip()}%"))
     order_col = getattr(Report, sort_by, Report.created_at)
     if sort_order == "desc":
         order_col = order_col.desc()
     query = query.order_by(order_col).offset((page - 1) * per_page).limit(per_page)
     result = await db.execute(query)
     reports = result.scalars().all()
-    items = [
-        {
-            "id": str(r.id),
-            "title": r.title,
-            "type": r.report_type,
-            "format": r.format,
-            "size": _format_size(r.file_size),
-            "date": r.created_at.isoformat() if r.created_at else "",
-            "status": "ready",
-            "filepath": r.filepath,
-            "assessment_id": str(r.scan_id) if r.scan_id else None,
-        }
-        for r in reports
-    ]
+    items = [_report_to_dict(r) for r in reports]
     return SuccessResponse(data=items, message=f"Found {len(reports)} reports")
+
+
+@router.patch("/{report_id}", response_model=SuccessResponse[dict])
+async def rename_report(
+    report_id: str,
+    title: str = Query(..., min_length=1, max_length=255, description="New report title"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a report (metadata only; the stored file keeps its name)."""
+    try:
+        uid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid report ID format")
+
+    result = await db.execute(select(Report).where(Report.id == uid))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    new_title = title.strip()
+    if not new_title:
+        raise HTTPException(status_code=400, detail="Report title cannot be empty")
+
+    old_title = report.title
+    report.title = new_title
+    await db.commit()
+    await db.refresh(report)
+    logger.info("Report renamed: {old} -> {new} ({id})", old=old_title, new=new_title, id=report_id)
+    return SuccessResponse(
+        data=_report_to_dict(report),
+        message="Report renamed successfully",
+    )
+
+
+@router.delete("/{report_id}", response_model=SuccessResponse[dict])
+async def delete_report(
+    report_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a report: removes the database row and its file from disk.
+
+    If the file is already missing, the database row is still deleted so the
+    two stay synchronized.
+    """
+    try:
+        uid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid report ID format")
+
+    result = await db.execute(select(Report).where(Report.id == uid))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    filepath = Path(report.filepath)
+    file_was_missing = not filepath.exists()
+    if not file_was_missing:
+        try:
+            filepath.unlink()
+            logger.info("Report file removed from disk: {path}", path=filepath)
+        except OSError as exc:
+            logger.error("Failed to remove report file {path}: {err}", path=filepath, err=exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to delete report file: {exc}",
+            )
+
+    await db.delete(report)
+    await db.commit()
+    message = "Report deleted"
+    if file_was_missing:
+        message = "Report deleted (file was already missing)"
+    return SuccessResponse(data={"id": report_id}, message=message)
 
 
 @router.post("/generate", response_model=SuccessResponse[dict])
@@ -71,6 +149,11 @@ async def generate_report(
     assessment_id: Optional[str] = Query(None, description="Assessment UUID to scope the report"),
     db: AsyncSession = Depends(get_db),
 ):
+    if report_type not in REPORT_TYPE_LABELS:
+        return SuccessResponse(data={}, message=f"Unsupported report type '{report_type}'")
+    if output_format not in ("json", "html", "pdf"):
+        return SuccessResponse(data={}, message=f"Unsupported output format '{output_format}'")
+
     scan_uuid = None
     if assessment_id:
         try:
@@ -78,59 +161,7 @@ async def generate_report(
         except ValueError:
             return SuccessResponse(data={}, message="Invalid assessment_id format")
 
-    hosts_query = select(Host)
-    if scan_uuid:
-        hosts_query = hosts_query.where(Host.scan_id == scan_uuid)
-    hosts_result = await db.execute(hosts_query.order_by(Host.created_at.desc()).limit(1000))
-    hosts = hosts_result.scalars().all()
-
-    vulns_query = select(Vulnerability).options(
-        joinedload(Vulnerability.host), joinedload(Vulnerability.port)
-    )
-    if scan_uuid:
-        vulns_query = vulns_query.where(Vulnerability.scan_id == scan_uuid)
-    vulns_result = await db.execute(vulns_query.order_by(Vulnerability.created_at.desc()).limit(1000))
-    vulns = vulns_result.scalars().all()
-
-    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
-    for v in vulns:
-        sev = v.severity or "Info"
-        if sev in severity_counts:
-            severity_counts[sev] += 1
-
-    report_data = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "report_type": report_type,
-        "assessment_id": assessment_id,
-        "summary": {
-            "total_hosts": len(hosts),
-            "alive_hosts": sum(1 for h in hosts if h.is_alive),
-            "total_vulnerabilities": len(vulns),
-            "severity_counts": severity_counts,
-        },
-        "hosts": [
-            {
-                "ip": str(h.ip_address),
-                "hostname": h.hostname,
-                "os": h.os_name,
-                "status": h.status,
-                "is_alive": h.is_alive,
-            }
-            for h in hosts
-        ],
-        "findings": [
-            {
-                "name": v.name,
-                "severity": v.severity,
-                "risk_score": v.risk_score,
-                "host_ip": str(v.host.ip_address) if v.host else None,
-                "status": v.status,
-                "cve_ids": v.cve_ids or [],
-            }
-            for v in vulns
-            if v.host
-        ],
-    }
+    report_data = await collect_report_data(db, scan_uuid, report_type)
 
     label = REPORT_TYPE_LABELS.get(report_type, "Technical")
     report_title = f"{label} Report - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
@@ -141,36 +172,34 @@ async def generate_report(
     report_id = str(uuid.uuid4())
     fallback_note = None
 
+    actual_format = output_format
     if output_format == "json":
         filepath = reports_dir / f"{report_id}.json"
-        filepath.write_text(json.dumps(report_data, indent=2, default=str))
+        filepath.write_text(payload_to_json(report_data))
         file_size = filepath.stat().st_size
     elif output_format == "html":
-        html = _render_html(report_data)
         filepath = reports_dir / f"{report_id}.html"
-        filepath.write_text(html)
+        filepath.write_text(render_html(report_data))
         file_size = filepath.stat().st_size
-    elif output_format == "pdf":
+    else:
         try:
             import reportlab  # type: ignore
         except ImportError:
             fallback_note = "PDF export unavailable on this server - HTML fallback generated"
-            html = _render_html(report_data)
+            actual_format = "HTML"
             filepath = reports_dir / f"{report_id}.html"
-            filepath.write_text(html)
+            filepath.write_text(render_html(report_data))
             file_size = filepath.stat().st_size
         else:
-            filepath = _render_pdf(report_data, reports_dir / f"{report_id}.pdf")
+            filepath = render_pdf(report_data, reports_dir / f"{report_id}.pdf")
             file_size = filepath.stat().st_size
-    else:
-        return SuccessResponse(data={}, message=f"Unsupported output format '{output_format}'")
 
     report = Report(
         id=uuid.UUID(report_id),
         scan_id=scan_uuid,
         title=report_title,
         report_type=report_type.capitalize(),
-        format=output_format.upper(),
+        format=actual_format,
         filepath=str(filepath),
         file_size=file_size,
         generated_by="system",
@@ -181,7 +210,7 @@ async def generate_report(
     logger.info(
         "Report generated: {title} ({format}, {size} bytes)",
         title=report_title,
-        format=output_format,
+        format=actual_format,
         size=file_size,
     )
     message = "Report generated"
@@ -192,7 +221,7 @@ async def generate_report(
             "id": report_id,
             "title": report_title,
             "type": report_type,
-            "format": output_format,
+            "format": actual_format,
             "size": _format_size(file_size),
             "fallback": fallback_note,
         },
@@ -225,69 +254,6 @@ async def download_report(report_id: str, db: AsyncSession = Depends(get_db)):
     )
 
 
-def _render_pdf(data: dict, filepath: Path) -> Path:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.lib.units import inch
-    from reportlab.platypus import (
-        Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
-    )
-
-    doc = SimpleDocTemplate(str(filepath), pagesize=A4)
-    styles = getSampleStyleSheet()
-    story = [Paragraph("VAPT Assessment Report", styles["Title"]),
-             Paragraph(f"Generated: {data.get('generated_at', '')}", styles["Normal"]),
-             Spacer(1, 0.2 * inch)]
-
-    summary = data.get("summary", {})
-    story.append(Paragraph("Summary", styles["Heading2"]))
-    sev = summary.get("severity_counts", {})
-    summary_rows = [
-        ["Total Hosts", str(summary.get("total_hosts", 0))],
-        ["Alive Hosts", str(summary.get("alive_hosts", 0))],
-        ["Vulnerabilities", str(summary.get("total_vulnerabilities", 0))],
-        ["Critical", str(sev.get("Critical", 0))],
-        ["High", str(sev.get("High", 0))],
-        ["Medium", str(sev.get("Medium", 0))],
-    ]
-    summary_table = Table(summary_rows)
-    summary_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("BACKGROUND", (0, 0), (0, -1), colors.lightgrey),
-    ]))
-    story.append(summary_table)
-    story.append(Spacer(1, 0.2 * inch))
-
-    hosts = data.get("hosts", [])
-    story.append(Paragraph(f"Hosts ({len(hosts)})", styles["Heading2"]))
-    if hosts:
-        host_rows = [[h.get("ip", ""), h.get("hostname", "-"), h.get("os", "-"),
-                      "Alive" if h.get("is_alive") else "Down"] for h in hosts]
-        host_table = Table([["IP", "Hostname", "OS", "Status"]] + host_rows)
-        host_table.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ]))
-        story.append(host_table)
-        story.append(Spacer(1, 0.2 * inch))
-
-    findings = data.get("findings", [])
-    story.append(Paragraph(f"Findings ({len(findings)})", styles["Heading2"]))
-    if findings:
-        finding_rows = [[f.get("name", "")[:80], f.get("severity", "-"),
-                         str(f.get("risk_score", "-")), f.get("host_ip", "-")] for f in findings]
-        finding_table = Table([["Name", "Severity", "CVSS", "Host"]] + finding_rows, colWidths=[2.8 * inch, 1 * inch, 0.7 * inch, 1.5 * inch])
-        finding_table.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ]))
-        story.append(finding_table)
-
-    doc.build(story)
-    return filepath
-
-
 def _media_type_for(filename: str, report_format: str) -> str:
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
@@ -305,37 +271,3 @@ def _media_type_for(filename: str, report_format: str) -> str:
     if report_format == "HTML":
         return "text/html"
     return "application/octet-stream"
-
-
-def _render_html(data: dict) -> str:
-    hosts = data.get("hosts", [])
-    findings = data.get("findings", [])
-    summary = data.get("summary", {})
-    sev = summary.get("severity_counts", {})
-
-    host_rows = "".join(f"<tr><td>{h['ip']}</td><td>{h.get('hostname','-')}</td><td>{h.get('os','-')}</td><td>{'Alive' if h['is_alive'] else 'Down'}</td></tr>" for h in hosts)
-    finding_rows = "".join(f"<tr><td>{f['name'][:80]}</td><td>{f.get('severity','-')}</td><td>{f.get('risk_score','-')}</td><td>{f.get('host_ip','-')}</td></tr>" for f in findings)
-
-    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>VAPT Report</title>
-<style>body{{font-family:Arial,sans-serif;margin:40px;color:#333}}h1{{color:#1a56db}}table{{width:100%;border-collapse:collapse;margin:16px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f5f5f5}}.severity{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:bold}}.critical{{background:#dc2626;color:#fff}}.high{{background:#ea580c;color:#fff}}.medium{{background:#ca8a04;color:#fff}}.low{{background:#16a34a;color:#fff}}.summary{{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;margin:16px 0}}.stat-card{{border:1px solid #ddd;border-radius:8px;padding:16px;text-align:center}}.stat-value{{font-size:24px;font-weight:bold;color:#1a56db}}</style></head>
-<body><h1>VAPT Assessment Report</h1><p>Generated: {data.get('generated_at','')}</p>
-<h2>Summary</h2><div class="summary">
-<div class="stat-card"><div class="stat-value">{summary.get('total_hosts',0)}</div><div>Total Hosts</div></div>
-<div class="stat-card"><div class="stat-value">{summary.get('alive_hosts',0)}</div><div>Alive Hosts</div></div>
-<div class="stat-card"><div class="stat-value">{summary.get('total_vulnerabilities',0)}</div><div>Vulnerabilities</div></div>
-<div class="stat-card"><div class="stat-value {sev.get('Critical',0) > 0 and 'critical' or ''}">{sev.get('Critical',0)}</div><div>Critical</div></div>
-<div class="stat-card"><div class="stat-value {sev.get('High',0) > 0 and 'high' or ''}">{sev.get('High',0)}</div><div>High</div></div>
-<div class="stat-card"><div class="stat-value">{sev.get('Medium',0)}</div><div>Medium</div></div></div>
-<h2>Hosts ({len(hosts)})</h2><table><thead><tr><th>IP</th><th>Hostname</th><th>OS</th><th>Status</th></tr></thead><tbody>{host_rows}</tbody></table>
-<h2>Findings ({len(findings)})</h2><table><thead><tr><th>Name</th><th>Severity</th><th>CVSS</th><th>Host</th></tr></thead><tbody>{finding_rows}</tbody></table>
-</body></html>"""
-
-
-def _format_size(size: Optional[int]) -> str:
-    if size is None:
-        return "0 B"
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size //= 1024
-    return f"{size:.1f} TB"

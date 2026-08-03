@@ -109,9 +109,12 @@ export function Cves() {
             })}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card title="Total CVEs" subtitle="Enriched intelligence">
               <div className="text-3xl font-bold">{stats.total_cves}</div>
+            </Card>
+            <Card title="Exploitable CVEs" subtitle="Exploit available">
+              <div className="text-3xl font-bold text-success">{stats.exploit_count}</div>
             </Card>
             <Card title="Average CVSS" subtitle="Mean score">
               <div className="text-3xl font-bold">{stats.average_cvss}</div>

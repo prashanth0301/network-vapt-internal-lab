@@ -1,0 +1,28 @@
+{
+  "status": "completed",
+  "total_services": 1,
+  "total_enriched": 1,
+  "categories": {
+    "Web Server": 1
+  },
+  "confidence_distribution": {
+    "high": 1,
+    "medium": 0,
+    "low": 0,
+    "unknown": 0
+  },
+  "services": [
+    {
+      "id": "d26f8183-22c4-4ee2-b9d6-0d9f78a86558",
+      "name": "http",
+      "normalized_name": "HTTP",
+      "product": "Apache httpd",
+      "normalized_product": "Apache HTTP Server",
+      "version": "Apache 2.4.57",
+      "normalized_version": "2.4.57",
+      "category": "Web Server",
+      "confidence": 98,
+      "notes": "Normalized from 'http' to 'HTTP'; Product normalized from 'Apache httpd' to 'Apache HTTP Server'"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "assessment_id": "ddbb3970-0e9a-4bb0-80c5-44d551731cbc",
+  "stage": "service_intelligence",
+  "target": "192.168.56.0/24",
+  "parameters": {},
+  "start_time": "2026-08-03T12:17:45.505153+00:00"
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -11,7 +12,15 @@ import { getActiveAssessmentId, setActiveAssessment, useAssessmentChangeTick } f
 import { getApiError } from '../services/api';
 
 const columns: Column<Host>[] = [
-  { key: 'ip_address', header: 'IP Address', render: (h) => <span className="font-mono text-sm">{h.ip_address}</span> },
+  {
+    key: 'ip_address',
+    header: 'IP Address',
+    render: (h) => (
+      <Link to={`/hosts/${h.id}`} className="font-mono text-sm text-primary-600 dark:text-primary-400 hover:underline">
+        {h.ip_address}
+      </Link>
+    ),
+  },
   { key: 'hostname', header: 'Hostname', render: (h) => h.hostname || '\u2014' },
   {
     key: 'os_name',

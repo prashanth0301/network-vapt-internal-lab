@@ -23,7 +23,7 @@ export function Header({ title }: HeaderProps) {
   const [activeId, setActiveId] = useState<string | null>(getActiveAssessmentId());
 
   useEffect(() => {
-    getAssessments(undefined, undefined, 1, 100)
+    getAssessments({ perPage: 100 })
       .then((res) => setAssessments(res.data || []))
       .catch(() => {});
   }, [tick]);

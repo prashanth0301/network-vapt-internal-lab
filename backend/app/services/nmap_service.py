@@ -54,40 +54,45 @@ SCAN_TYPES = {
         "args": [
             "-sn",
             "-n",
+            "-PS21,22,25,80,135,139,443,445,3389",
             "--max-retries", "0",
             "--max-rtt-timeout", "1000ms",
             "--min-parallelism", "100",
             "--host-timeout", "8s",
         ],
-        "description": "ICMP echo, TCP SYN to 443, TCP ACK to 80, ICMP timestamp",
+        "description": "ICMP echo, TCP SYN to 21,22,25,80,135,139,443,445,3389, TCP ACK to 80, ICMP timestamp",
     },
     "arp_scan": {
         "args": ["-sn", "-PR"],
         "description": "ARP request scan (local network only)",
     },
     "quick_scan": {
-        "args": ["-sn", "-T4", "--reason"],
+        "args": ["-sn", "-T4", "-n", "--reason", "--max-retries", "1"],
         "description": "Quick ping sweep with timing template T4",
     },
     "tcp_syn": {
-        "args": ["-sS", "-T4"],
-        "description": "TCP SYN stealth scan",
+        "args": ["-Pn", "-sS", "-T4", "--max-retries", "2"],
+        "description": "TCP SYN stealth scan (no host discovery)",
     },
     "tcp_connect": {
-        "args": ["-sT", "-T4"],
-        "description": "TCP Connect scan (no raw sockets needed)",
+        "args": ["-Pn", "-sT", "-T4", "--max-retries", "2"],
+        "description": "TCP Connect scan (no raw sockets needed, no host discovery)",
     },
     "udp_scan": {
-        "args": ["-sU", "-T4"],
+        "args": ["-sU", "-T4", "--max-retries", "2"],
         "description": "UDP port scan",
     },
     "version_detection": {
-        "args": ["-sV", "--version-intensity", "5"],
-        "description": "Service version detection",
+        "args": ["-Pn", "-sV", "--version-intensity", "5", "--max-retries", "2"],
+        "description": "Service version detection (no host discovery)",
     },
     "os_detection": {
         "args": ["-O", "--osscan-guess"],
         "description": "Operating system detection",
+    },
+    "vuln_scan": {
+        "args": ["-Pn", "-sV", "--version-intensity", "5", "--script", "vuln,vulners", "-T4", "--max-retries", "2"],
+        "description": "Service version detection with NSE vulnerability scripts (no host discovery)",
     },
 }
 
@@ -194,6 +199,21 @@ def parse_nmap_output(xml_content: str) -> list[NmapHostResult]:
     return hosts
 
 
+def _extract_banner(port_elem: ET.Element, service_elem: ET.Element) -> Optional[str]:
+    banner = None
+    for script_elem in port_elem.findall("script"):
+        if script_elem.get("id") == "banner":
+            output = script_elem.get("output")
+            if output:
+                banner = output.strip()
+            break
+    if not banner:
+        banner_elem = service_elem.find("banner")
+        if banner_elem is not None and banner_elem.text:
+            banner = banner_elem.text.strip()
+    return banner or None
+
+
 def _parse_host(host_elem: ET.Element) -> Optional[NmapHostResult]:
     status_elem = host_elem.find("status")
     if status_elem is None:
@@ -268,7 +288,7 @@ def _parse_host(host_elem: ET.Element) -> Optional[NmapHostResult]:
                         port_obj.version = service_elem.get("version", None)
                         port_obj.extra_info = service_elem.get("extrainfo", None)
                         port_obj.tunnel = service_elem.get("tunnel", None)
-                        port_obj.banner = service_elem.get("banner", None) or service_elem.get("method", None)
+                        port_obj.banner = _extract_banner(port_elem, service_elem)
                 open_ports.append(port_obj)
 
     return NmapHostResult(

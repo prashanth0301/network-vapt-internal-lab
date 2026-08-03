@@ -1,13 +1,19 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
 from app.schemas.common import ErrorResponse, SuccessResponse
-from app.schemas.host import HostDiscoverRequest, HostResponse, HostUpdate
+from app.schemas.host import (
+    HostDetailsResponse,
+    HostDiscoverRequest,
+    HostResponse,
+    HostUpdate,
+)
+from app.services.host_details_service import get_host_details
 from app.services.host_discovery_service import (
     delete_host,
     get_all_hosts,
@@ -83,8 +89,31 @@ async def hosts_summary(
 
 
 @router.get(
+    "/{host_id}/details",
+    response_model=SuccessResponse[HostDetailsResponse],
+    summary="Get consolidated host details",
+    responses={404: {"model": ErrorResponse, "description": "Host not found"}},
+)
+async def host_details(
+    host_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    details = await get_host_details(db, host_id)
+    if not details:
+        raise HTTPException(status_code=404, detail=f"Host '{host_id}' not found")
+    host = details.pop("host")
+    return SuccessResponse(
+        data=HostDetailsResponse(
+            host=HostResponse.model_validate(host, from_attributes=True),
+            **details,
+        ),
+        message="Host details retrieved",
+    )
+
+
+@router.get(
     "/{host_id}",
-    response_model=SuccessResponse[HostResponse],
+    response_model=SuccessResponse[Optional[HostResponse]],
     summary="Get host details",
     responses={404: {"model": ErrorResponse, "description": "Host not found"}},
 )

@@ -71,6 +71,7 @@ class OpenVASScanner(VulnerabilityScanner):
         target: str,
         ports: Optional[str] = None,
         scan_profile: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> ScanResult:
         scan_id = f"openvas-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{hash(target) % 10000:04d}"
         logger.info(

@@ -41,6 +41,7 @@ class CVEStatisticsResponse(BaseModel):
     total_cves: int
     severity_counts: dict[str, int]
     kev_count: int
+    exploit_count: int
     average_cvss: float
     average_epss: float
     top_vendors: list[dict]

@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.core.config import settings
 from app.core.database import async_session_factory
 from app.services.auth.auth_service import AuthService
 from sqlalchemy import select
@@ -31,9 +32,9 @@ from app.models.user import User
 
 async def main():
     parser = argparse.ArgumentParser(description="Create the first admin user")
-    parser.add_argument("--username", default="admin", help="Admin username")
-    parser.add_argument("--email", default="admin@networkvapt.local", help="Admin email")
-    parser.add_argument("--password", default="Admin@123", help="Admin password")
+    parser.add_argument("--username", default=settings.ADMIN_USERNAME, help="Admin username")
+    parser.add_argument("--email", default=settings.ADMIN_EMAIL, help="Admin email")
+    parser.add_argument("--password", default=settings.ADMIN_PASSWORD, help="Admin password")
     args = parser.parse_args()
 
     auth_service = AuthService()

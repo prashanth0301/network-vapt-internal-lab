@@ -35,6 +35,24 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized successfully")
 
+    from app.services.auth.bootstrap import bootstrap_default_admin
+
+    await bootstrap_default_admin()
+
+    from app.services.settings_service import seed_default_settings
+
+    try:
+        seeded = await seed_default_settings()
+        if seeded:
+            logger.info("Seeded default settings: {count}", count=seeded)
+        else:
+            logger.info("Settings already present - seeding skipped")
+    except Exception as exc:
+        logger.error(
+            "Settings seeding failed: {error}",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
     from app.services.host_discovery_service import host_discovery_handler
     from app.services.assessment import assessment_manager
     from app.services.port_scan_service import port_scan_handler

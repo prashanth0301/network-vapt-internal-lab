@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_MINUTES: int = 30
     JWT_REFRESH_EXPIRATION_DAYS: int = 7
 
+    AUTO_CREATE_ADMIN: bool = True
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_EMAIL: str = "admin@networkvapt.local"
+    ADMIN_PASSWORD: str = "Admin@123"
+
     NVD_API_KEY: Optional[str] = None
 
     MSF_RPC_HOST: str = "127.0.0.1"

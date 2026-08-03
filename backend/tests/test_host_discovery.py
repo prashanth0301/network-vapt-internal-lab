@@ -130,6 +130,7 @@ class TestNmapCommandBuilder:
         assert "--host-timeout" in cmd
         assert "--max-retries" in cmd
         assert "--max-rtt-timeout" in cmd
+        assert "-PS21,22,25,80,135,139,443,445,3389" in cmd
         assert "192.168.56.0/24" in cmd
 
     def test_arp_scan_command(self):
@@ -141,6 +142,7 @@ class TestNmapCommandBuilder:
         assert "-p" in cmd
         idx = cmd.index("-p")
         assert cmd[idx + 1] == "22,80,443"
+        assert "-Pn" in cmd
 
     def test_unknown_scan_type_defaults_to_ping(self):
         cmd = build_command("unknown_type", "192.168.56.1")
@@ -159,10 +161,23 @@ class TestNmapCommandBuilder:
     def test_tcp_connect_scan(self):
         cmd = build_command("tcp_connect", "192.168.56.20")
         assert "-sT" in cmd
+        assert "-Pn" in cmd
 
-    def test_udp_scan(self):
+    def test_version_detection_scan(self):
+        cmd = build_command("version_detection", "192.168.56.20")
+        assert "-sV" in cmd
+        assert "-Pn" in cmd
+
+    def test_vuln_scan(self):
+        cmd = build_command("vuln_scan", "192.168.56.20")
+        assert "-sV" in cmd
+        assert "--script" in cmd
+        assert "-Pn" in cmd
+
+    def test_udp_scan_keeps_discovery(self):
         cmd = build_command("udp_scan", "192.168.56.20")
         assert "-sU" in cmd
+        assert "-Pn" not in cmd
 
 
 class TestNmapHostResult:

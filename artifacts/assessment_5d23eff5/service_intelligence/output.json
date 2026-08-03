@@ -1,0 +1,32 @@
+{
+  "status": "completed",
+  "total_services": 1,
+  "total_enriched": 1,
+  "categories": {
+    "Web Server": 1
+  },
+  "confidence_distribution": {
+    "high": 1,
+    "medium": 0,
+    "low": 0,
+    "unknown": 0
+  },
+  "version_detection": {
+    "skipped": true,
+    "reason": "no open TCP ports to fingerprint"
+  },
+  "services": [
+    {
+      "id": "9b36d4d4-b343-4f70-8b96-c717ab0537b1",
+      "name": "http",
+      "normalized_name": "HTTP",
+      "product": "Apache httpd",
+      "normalized_product": "Apache HTTP Server",
+      "version": "Apache 2.4.57",
+      "normalized_version": "2.4.57",
+      "category": "Web Server",
+      "confidence": 98,
+      "notes": "Normalized from 'http' to 'HTTP'; Product normalized from 'Apache httpd' to 'Apache HTTP Server'"
+    }
+  ]
+}

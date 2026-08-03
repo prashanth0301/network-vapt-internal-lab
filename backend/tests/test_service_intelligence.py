@@ -443,6 +443,7 @@ class TestServiceIntelligenceHandler:
         mock_session.execute = AsyncMock()
         mock_session.execute.return_value = MagicMock()
         mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value.unique.return_value.scalars.return_value.all.return_value = []
 
         with patch("app.services.service_intelligence_service.async_session_factory") as mock_sf:
             mock_sf.return_value = MagicMock()
@@ -494,6 +495,13 @@ class TestServiceIntelligenceHandler:
         fetch_session.execute.return_value = MagicMock()
         fetch_session.execute.return_value.scalars.return_value.all.return_value = [mock_service]
 
+        hosts_session = AsyncMock()
+        hosts_session.execute = AsyncMock()
+        hosts_result_mock = MagicMock()
+        hosts_result_mock.unique.return_value = hosts_result_mock
+        hosts_result_mock.scalars.return_value.all.return_value = []
+        hosts_session.execute.return_value = hosts_result_mock
+
         write_session = AsyncMock()
         write_session.commit = AsyncMock()
         write_session.add = MagicMock()
@@ -503,7 +511,7 @@ class TestServiceIntelligenceHandler:
         meta_session.add = MagicMock()
         meta_session.flush = AsyncMock()
 
-        sessions = [fetch_session, write_session, meta_session]
+        sessions = [hosts_session, fetch_session, write_session, meta_session]
         session_idx = 0
 
         def enter_side_effect():
@@ -529,6 +537,7 @@ class TestServiceIntelligenceHandler:
         mock_session.execute = AsyncMock()
         mock_session.execute.return_value = MagicMock()
         mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value.unique.return_value.scalars.return_value.all.return_value = []
 
         mock_tracker = MagicMock()
 

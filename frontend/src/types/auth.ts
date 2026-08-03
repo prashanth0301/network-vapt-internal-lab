@@ -35,6 +35,26 @@ export interface AuthState {
   isLoading: boolean;
 }
 
+export interface UserListResponse {
+  items: User[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+export interface UserStatusPayload {
+  status: 'active' | 'inactive' | 'disabled';
+}
+
+export interface UserRolePayload {
+  role: 'administrator' | 'security_analyst' | 'viewer';
+}
+
+export interface PasswordResetPayload {
+  password: string;
+}
+
 export interface AuditLog {
   id: string;
   user_id: string | null;

@@ -30,7 +30,7 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     uptime = time.time() - _start_time
 
     return HealthResponse(
-        status=db_status if db_status == "connected" else "degraded",
+        status="healthy" if db_status == "connected" else "degraded",
         version=settings.APP_VERSION,
         app_name=settings.APP_NAME,
         database=db_status,

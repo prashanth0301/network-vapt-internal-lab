@@ -1,10 +1,10 @@
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.database import async_session_factory
 from app.models.scan import Scan
@@ -331,15 +331,37 @@ class AssessmentManager:
         self,
         status: Optional[str] = None,
         scan_type: Optional[str] = None,
+        search: Optional[str] = None,
+        target: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[AssessmentRecord], int]:
         results = list(self._assessments.values())
         try:
             async with async_session_factory() as session:
-                result = await session.execute(
-                    select(Scan).order_by(Scan.created_at.desc())
-                )
+                query = select(Scan).order_by(Scan.created_at.desc())
+                if status:
+                    query = query.where(Scan.status == status)
+                if scan_type:
+                    query = query.where(Scan.scan_type == scan_type)
+                if search:
+                    pattern = f"%{search.strip()}%"
+                    query = query.where(
+                        or_(Scan.name.ilike(pattern), Scan.target.ilike(pattern))
+                    )
+                if target:
+                    query = query.where(
+                        Scan.target.ilike(f"%{target.strip()}%")
+                    )
+                if date_from:
+                    query = query.where(Scan.created_at >= date_from)
+                if date_to:
+                    query = query.where(
+                        Scan.created_at < date_to + timedelta(days=1)
+                    )
+                result = await session.execute(query)
                 results.extend(
                     self._record_from_scan(row)
                     for row in result.scalars()
@@ -355,6 +377,30 @@ class AssessmentManager:
             results = [a for a in results if a.status.value == status]
         if scan_type:
             results = [a for a in results if a.scan_type == scan_type]
+        if search:
+            term = search.strip().lower()
+            results = [
+                a
+                for a in results
+                if term in a.name.lower() or term in a.target.lower()
+            ]
+        if target:
+            term = target.strip().lower()
+            results = [a for a in results if term in a.target.lower()]
+        if date_from:
+            results = [
+                a
+                for a in results
+                if (a.created_at or datetime.min.replace(tzinfo=timezone.utc))
+                >= date_from
+            ]
+        if date_to:
+            end = date_to + timedelta(days=1)
+            results = [
+                a
+                for a in results
+                if (a.created_at or datetime.min.replace(tzinfo=timezone.utc)) < end
+            ]
 
         results.sort(key=lambda a: a.created_at, reverse=True)
         total = len(results)

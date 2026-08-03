@@ -358,14 +358,9 @@ npm run dev
 
 ### First Login
 
-The platform does **not** create a default admin account automatically. After starting the backend, seed the first administrator:
+On first startup the backend **automatically creates a default administrator** when the `users` table is empty (disable with `AUTO_CREATE_ADMIN=false`):
 
-```bash
-cd backend
-python -m scripts.create_admin
-```
-
-Default credentials:
+Default credentials (`.env` overridable via `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD`):
 | Field | Value |
 |-------|-------|
 | Username | `admin` |
@@ -374,6 +369,13 @@ Default credentials:
 | Role | `administrator` |
 
 Login at `http://localhost:5173` (frontend) or `http://localhost:8000/docs` (Swagger).
+
+To (re)seed manually or create additional users, use the idempotent CLI script:
+
+```bash
+cd backend
+python -m scripts.create_admin
+```
 
 ### Creating Additional Users
 

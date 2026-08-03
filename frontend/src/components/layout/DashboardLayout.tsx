@@ -44,10 +44,15 @@ export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
 
-  const title = pageTitles[location.pathname] || 'Dashboard';
-  const breadcrumbs = breadcrumbMap[location.pathname] || [
-    { label: title },
-  ];
+  const pathname = location.pathname;
+  const isHostDetails = pathname.startsWith('/hosts/');
+  const title = isHostDetails ? 'Host Details' : pageTitles[pathname] || 'Dashboard';
+  const breadcrumbs = isHostDetails
+    ? [
+        { label: 'Hosts', path: '/hosts' },
+        { label: 'Host Details' },
+      ]
+    : breadcrumbMap[pathname] || [{ label: title }];
 
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
