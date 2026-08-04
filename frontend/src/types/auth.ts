@@ -58,10 +58,32 @@ export interface PasswordResetPayload {
 export interface AuditLog {
   id: string;
   user_id: string | null;
+  username: string | null;
   action: string;
   resource_type: string | null;
   resource_id: string | null;
   details: Record<string, unknown> | null;
   ip_address: string | null;
+  user_agent: string | null;
+  status: 'success' | 'failure';
   timestamp: string;
+}
+
+export interface AuditLogQueryParams {
+  search?: string;
+  user?: string;
+  action?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  sort_by?: 'timestamp' | 'action' | 'username';
+  sort_order?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export interface AuditLogMeta {
+  users: string[];
+  actions: string[];
+  statuses: string[];
 }

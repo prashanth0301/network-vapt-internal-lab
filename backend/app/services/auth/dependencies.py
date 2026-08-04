@@ -20,7 +20,7 @@ PERMISSIONS: dict[str, list[str]] = {
     ],
     "security_analyst": [
         "create:assessment", "view:reports", "run:scans",
-        "export:reports",
+        "export:reports", "view:audit",
     ],
     "viewer": [
         "view:reports",

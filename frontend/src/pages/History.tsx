@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ReportList } from '../components/assessment/ReportList';
+import { SeverityChips } from '../components/assessment/SeverityChips';
+import { SeveritySummary } from '../components/assessment/SeveritySummary';
+import { Stat } from '../components/assessment/Stat';
+import { AssessmentProgress } from '../components/assessment/AssessmentProgress';
+import {
+  formatDuration,
+  formatSeconds,
+  progressColor,
+  SCAN_TYPE_LABELS,
+  STAGE_LABELS,
+  statusColor,
+} from '../components/assessment/assessmentMeta';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -20,24 +33,7 @@ import { getApiError } from '../services/api';
 import { setActiveAssessment, useAssessmentChangeTick } from '../services/assessmentStore';
 import { downloadReport, generateReport, getReports, type Report } from '../services/reportService';
 
-const SCAN_TYPE_LABELS: Record<string, string> = {
-  full_assessment: 'Full Assessment',
-  host_discovery: 'Host Discovery',
-  port_scan: 'Port Scan',
-  service_enum: 'Service Intelligence',
-  vuln_scan: 'Vulnerability Scan',
-};
-
 const SCAN_TYPE_OPTIONS = ['', 'full_assessment', 'host_discovery', 'port_scan', 'service_enum', 'vuln_scan'];
-
-const STAGE_LABELS: Record<string, string> = {
-  host_discovery: 'Host Discovery',
-  port_scan: 'Port Scan',
-  service_intelligence: 'Service Intelligence',
-  vulnerability_assessment: 'Vulnerability Assessment',
-  cve_intelligence: 'CVE Intelligence',
-  exploit_verification: 'Exploit Verification',
-};
 
 const STATUS_OPTIONS = ['', 'completed', 'failed', 'running', 'pending', 'cancelled'];
 
@@ -53,75 +49,6 @@ const DELETE_PRESETS = [
   { value: 'custom', label: 'Custom Date Range' },
   { value: 'all', label: 'Delete All History' },
 ];
-
-const SEVERITY_HEX: Record<string, string> = {
-  Critical: '#ef4444',
-  High: '#f97316',
-  Medium: '#eab308',
-  Low: '#22c55e',
-  Info: '#3b82f6',
-};
-
-const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Info'];
-
-function statusColor(status: string): 'success' | 'warning' | 'danger' | 'info' | 'default' {
-  switch (status) {
-    case 'completed': return 'success';
-    case 'failed': return 'danger';
-    case 'running': return 'info';
-    case 'cancelled': return 'warning';
-    case 'pending': return 'warning';
-    default: return 'default';
-  }
-}
-
-function formatDuration(startedAt: string | null, completedAt: string | null, durationSeconds: number | null): string {
-  if (durationSeconds !== null && durationSeconds > 0) {
-    return formatSeconds(durationSeconds);
-  }
-  if (!startedAt || !completedAt) return '-';
-  const seconds = (new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000;
-  if (seconds < 60) return `${seconds.toFixed(0)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs.toFixed(0)}s`;
-}
-
-function formatSeconds(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(0)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  if (mins < 60) return `${mins}m ${secs}s`;
-  const hours = Math.floor(mins / 60);
-  return `${hours}h ${mins % 60}m`;
-}
-
-function progressColor(status: string): 'primary' | 'success' | 'warning' | 'danger' {
-  if (status === 'completed') return 'success';
-  if (status === 'failed') return 'danger';
-  if (status === 'running') return 'primary';
-  return 'warning';
-}
-
-function SeverityChips({ counts }: { counts: Record<string, number> }) {
-  const total = Object.values(counts || {}).reduce((sum, n) => sum + n, 0);
-  if (total === 0) return <span className="text-xs text-surface-400">-</span>;
-  return (
-    <div className="flex flex-wrap gap-1">
-      {SEVERITY_ORDER.filter((s) => (counts[s] || 0) > 0).map((s) => (
-        <span
-          key={s}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium"
-          style={{ backgroundColor: `${SEVERITY_HEX[s]}1a`, color: SEVERITY_HEX[s] }}
-          title={s}
-        >
-          {s.charAt(0)}
-          <span className="font-mono">{counts[s]}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
 
 type Tab = 'overview' | 'progress' | 'reports' | 'artifacts';
 
@@ -681,27 +608,10 @@ export function History() {
 
                   <div>
                     <h4 className="text-sm font-medium text-surface-600 dark:text-surface-400 mb-3">Severity Summary</h4>
-                    {detailAssessment.total_vulnerabilities > 0 ? (
-                      <div className="space-y-2">
-                        {SEVERITY_ORDER.filter((s) => (detailAssessment.severity_counts[s] || 0) > 0).map((s) => {
-                          const count = detailAssessment.severity_counts[s] || 0;
-                          const pct = (count / detailAssessment.total_vulnerabilities) * 100;
-                          return (
-                            <div key={s}>
-                              <div className="flex items-center justify-between text-sm mb-1">
-                                <span className="text-surface-700 dark:text-surface-300">{s}</span>
-                                <span className="font-mono text-surface-500">{count} ({pct.toFixed(0)}%)</span>
-                              </div>
-                              <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden h-2">
-                                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: SEVERITY_HEX[s] }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-surface-400">No vulnerabilities found in this assessment.</p>
-                    )}
+                    <SeveritySummary
+                      counts={detailAssessment.severity_counts}
+                      total={detailAssessment.total_vulnerabilities}
+                    />
                   </div>
 
                   {detailAssessment.error_message && (
@@ -714,43 +624,11 @@ export function History() {
 
               {!loadingDetail && detailTab === 'progress' && (
                 <div className="p-6 space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-surface-600 dark:text-surface-400">Overall Progress</span>
-                      <span className="font-medium text-surface-800 dark:text-surface-200">
-                        {Math.round(detailAssessment.progress_percent ?? 0)}%
-                      </span>
-                    </div>
-                    <ProgressBar value={detailAssessment.progress_percent ?? 0} color={progressColor(detailAssessment.status)} />
-                  </div>
-                  {detailAssessment.progress && detailAssessment.progress.stages.length > 0 ? (
-                    <div className="space-y-3">
-                      {detailAssessment.progress.stages.map((stage) => (
-                        <div key={stage.stage_name} className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                              {STAGE_LABELS[stage.stage_name] || stage.stage_name}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <Badge variant={statusColor(stage.status)}>{stage.status}</Badge>
-                              <span className="text-xs font-mono text-surface-500">{Math.round(stage.progress)}%</span>
-                            </div>
-                          </div>
-                          <ProgressBar value={stage.progress} color={progressColor(stage.status)} size="sm" />
-                          {stage.error_message && (
-                            <p className="text-xs text-critical mt-2">{stage.error_message}</p>
-                          )}
-                          {stage.summary && (
-                            <p className="text-xs text-surface-400 mt-2 font-mono">{JSON.stringify(stage.summary)}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-surface-400">
-                      Pipeline progress is unavailable for this assessment (only visible while running or for in-session scans).
-                    </p>
-                  )}
+                  <AssessmentProgress
+                    progress={detailAssessment.progress}
+                    status={detailAssessment.status}
+                    overallPercent={detailAssessment.progress_percent}
+                  />
                 </div>
               )}
 
@@ -777,30 +655,12 @@ export function History() {
                   </div>
 
                   {loadingReports && <div className="py-4"><LoadingSpinner /></div>}
-                  {!loadingReports && reports.length === 0 && (
-                    <p className="text-sm text-surface-400">No reports for this assessment yet.</p>
-                  )}
-                  {!loadingReports && reports.length > 0 && (
-                    <div className="divide-y divide-surface-100 dark:divide-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg">
-                      {reports.map((r) => (
-                        <div key={r.id} className="flex items-center justify-between px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{r.title}</p>
-                            <p className="text-xs text-surface-400 mt-0.5">
-                              {r.type} · {r.format} · {r.size} · {r.date ? new Date(r.date).toLocaleString() : '-'}
-                            </p>
-                          </div>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleDownloadReport(r)}
-                            loading={downloadingId === r.id}
-                          >
-                            Download
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+                  {!loadingReports && (
+                    <ReportList
+                      reports={reports}
+                      downloadingId={downloadingId}
+                      onDownload={handleDownloadReport}
+                    />
                   )}
                 </div>
               )}
@@ -883,15 +743,6 @@ export function History() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
-      <p className="text-xs text-surface-500 dark:text-surface-400">{label}</p>
-      <p className="text-lg font-semibold text-surface-900 dark:text-surface-100">{value}</p>
     </div>
   );
 }

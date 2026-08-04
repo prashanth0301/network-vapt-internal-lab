@@ -69,11 +69,14 @@ class UserMeResponse(BaseModel):
 class AuditLogResponse(BaseModel):
     id: uuid.UUID
     user_id: Optional[uuid.UUID] = None
+    username: Optional[str] = None
     action: str
     resource_type: Optional[str] = None
     resource_id: Optional[str] = None
     details: Optional[dict] = None
     ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
     timestamp: datetime
+    status: str = "success"
 
     model_config = {"from_attributes": True}

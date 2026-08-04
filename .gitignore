@@ -67,3 +67,12 @@ htmlcov/
 
 # Build
 build/
+
+# Generated scan artifacts
+artifacts/
+
+# Frontend TypeScript build cache
+frontend/tsconfig.tsbuildinfo
+
+# Uploaded logos
+backend/media/logos/

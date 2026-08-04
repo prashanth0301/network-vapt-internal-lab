@@ -18,6 +18,8 @@ import { Services } from '../pages/Services';
 import { Settings } from '../pages/Settings';
 import { Cves } from '../pages/Cves';
 import { Users } from '../pages/Users';
+import { AuditLogs } from '../pages/AuditLogs';
+import { AssessmentOverview } from '../pages/AssessmentOverview';
 import { Vulnerabilities } from '../pages/Vulnerabilities';
 import { Workspace } from '../pages/Workspace';
 
@@ -43,11 +45,13 @@ const routes: RouteObject[] = [
       { path: 'cves', element: protectedLayout(<Cves />) },
       { path: 'vulnerabilities', element: protectedLayout(<Vulnerabilities />) },
       { path: 'history', element: protectedLayout(<History />) },
+      { path: 'history/:assessmentId', element: protectedLayout(<AssessmentOverview />) },
       { path: 'exploitation', element: protectedLayout(<Exploitation />) },
       { path: 'exploits', element: protectedLayout(<Exploits />) },
       { path: 'packets', element: protectedLayout(<Packets />) },
       { path: 'reports', element: protectedLayout(<Reports />) },
       { path: 'users', element: protectedLayout(<Users />) },
+      { path: 'audit-logs', element: protectedLayout(<AuditLogs />) },
       { path: 'settings', element: protectedLayout(<Settings />) },
       { path: '500', element: <Error500 /> },
       { path: '*', element: <Error404 /> },

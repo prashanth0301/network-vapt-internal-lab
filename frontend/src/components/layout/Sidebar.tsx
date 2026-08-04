@@ -25,14 +25,37 @@ const adminItems = [
   { label: 'Settings', path: '/settings', icon: '⚙' },
 ];
 
+const securityItems = [{ label: 'Audit Logs', path: '/audit-logs', icon: '📜' }];
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, hasPermission } = useContext(AuthContext);
   const isAdmin = user?.role === 'administrator';
+  const canViewAudit = hasPermission('view:audit');
+
+  const renderLink = (item: { label: string; path: string; icon: string }) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      className={({ isActive }) =>
+        classNames(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+          isActive
+            ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-900 dark:hover:text-surface-200',
+          collapsed && 'justify-center px-2',
+        )
+      }
+      title={item.label}
+    >
+      <span className="text-lg">{item.icon}</span>
+      {!collapsed && <span>{item.label}</span>}
+    </NavLink>
+  );
 
   return (
     <aside
@@ -85,26 +108,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <p className="px-3 py-1 text-xs font-medium text-surface-400 uppercase tracking-wider">
             {!collapsed && 'Administration'}
           </p>
-          {adminItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                classNames(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
-                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-900 dark:hover:text-surface-200',
-                  collapsed && 'justify-center px-2',
-                )
-              }
-              title={item.label}
-            >
-              <span className="text-lg">{item.icon}</span>
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
-          ))}
+          {adminItems.map(renderLink)}
+          {securityItems.map(renderLink)}
         </div>}
+
+        {!isAdmin && canViewAudit && (
+          <div className="border-t border-surface-200 dark:border-surface-700 my-2 pt-2">
+            <p className="px-3 py-1 text-xs font-medium text-surface-400 uppercase tracking-wider">
+              {!collapsed && 'Security'}
+            </p>
+            {securityItems.map(renderLink)}
+          </div>
+        )}
       </nav>
 
       <div className="p-3 border-t border-surface-200 dark:border-surface-700">

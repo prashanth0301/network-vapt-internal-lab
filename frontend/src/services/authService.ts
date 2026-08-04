@@ -1,6 +1,5 @@
 import type { ApiResponse } from '../types/common';
 import type {
-  AuditLog,
   LoginRequest,
   PasswordResetPayload,
   TokenResponse,
@@ -123,10 +122,5 @@ export async function getRoles(): Promise<ApiResponse<{ roles: string[]; permiss
 
 export async function getPermissions(): Promise<ApiResponse<{ role: string; permissions: string[]; all_permissions: Record<string, string[]> }>> {
   const response = await apiClient.get<ApiResponse<{ role: string; permissions: string[]; all_permissions: Record<string, string[]> }>>('/permissions');
-  return response.data;
-}
-
-export async function getAuditLogs(): Promise<ApiResponse<AuditLog[]>> {
-  const response = await apiClient.get<ApiResponse<AuditLog[]>>('/audit-logs');
   return response.data;
 }

@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Area,
   AreaChart,
@@ -22,7 +23,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { AuthContext } from '../context/AuthContext';
 import { getApiError } from '../services/api';
 import { getDashboardSummary } from '../services/dashboardService';
-import { useAssessmentChangeTick } from '../services/assessmentStore';
+import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
 import type { DashboardSummary, PortSlice, ServiceSlice } from '../types/dashboard';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -88,7 +89,7 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getDashboardSummary();
+      const res = await getDashboardSummary(getActiveAssessmentId() ?? undefined);
       setSummary(res.data);
       setLastUpdated(new Date());
     } catch (e) {
@@ -434,16 +435,23 @@ function RecentAssessmentsCard({ data }: { data: DashboardSummary }) {
     <Card title="Recent Assessments" subtitle={`${data.totals.assessments} total`}>
       <div className="space-y-3">
         {items.length > 0 ? items.map((a) => (
-          <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50">
+          <Link
+            key={a.id}
+            to={`/history/${a.id}`}
+            title={`Open overview for ${a.name}`}
+            className="flex items-center justify-between p-3 rounded-lg bg-surface-50 dark:bg-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-700/50 transition-colors group"
+          >
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">{a.name}</p>
+              <p className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                {a.name}
+              </p>
               <p className="text-xs text-surface-400 mt-0.5 truncate">{a.target}</p>
             </div>
             <div className="flex items-center gap-3 ml-4 flex-shrink-0">
               <Badge variant={statusVariant(a.status)}>{a.status}</Badge>
               <span className="text-xs text-surface-400 whitespace-nowrap">{formatRelative(a.created_at)}</span>
             </div>
-          </div>
+          </Link>
         )) : (
           <div className="text-sm text-surface-400 text-center py-4">
             No assessments yet — create one from the Workspace

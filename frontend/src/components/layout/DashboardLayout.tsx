@@ -46,13 +46,23 @@ export function DashboardLayout() {
 
   const pathname = location.pathname;
   const isHostDetails = pathname.startsWith('/hosts/');
-  const title = isHostDetails ? 'Host Details' : pageTitles[pathname] || 'Dashboard';
+  const isAssessmentOverview = pathname.startsWith('/history/');
+  const title = isHostDetails
+    ? 'Host Details'
+    : isAssessmentOverview
+      ? 'Assessment Overview'
+      : pageTitles[pathname] || 'Dashboard';
   const breadcrumbs = isHostDetails
     ? [
         { label: 'Hosts', path: '/hosts' },
         { label: 'Host Details' },
       ]
-    : breadcrumbMap[pathname] || [{ label: title }];
+    : isAssessmentOverview
+      ? [
+          { label: 'Assessment History', path: '/history' },
+          { label: 'Assessment Overview' },
+        ]
+      : breadcrumbMap[pathname] || [{ label: title }];
 
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
