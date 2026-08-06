@@ -65,7 +65,7 @@ Built on **FastAPI + PostgreSQL 16** (backend) and **React 18 + TypeScript** (fr
 
 ![Architecture Diagram](docs/images/architecture.png)
 
-> **Note:** `docs/images/architecture.png` is a placeholder. Replace it with the rendered architecture diagram before publishing.
+
 
 The platform follows a clean three-tier architecture:
 
@@ -172,23 +172,101 @@ Network-VAPT-Internal-Lab/
 
 ## Screenshots
 
-> Placeholders — drop real captures into `screenshots/` and update the paths before publishing.
+### 1. Login
 
-| Section | Screenshot |
-|---|---|
-| Dashboard | ![Dashboard](screenshots/dashboard.png) |
-| Assessment Workflow | ![Assessment Workflow](screenshots/assessment-workflow.png) |
-| Assessment History | ![Assessment History](screenshots/assessment-history.png) |
-| Hosts | ![Hosts](screenshots/hosts.png) |
-| Services | ![Services](screenshots/services.png) |
-| Vulnerabilities | ![Vulnerabilities](screenshots/vulnerabilities.png) |
-| Exploit Verification | ![Exploit Verification](screenshots/exploits.png) |
-| Packet Analysis | ![Packet Analysis](screenshots/packet-analysis.png) |
-| Reports | ![Reports](screenshots/reports.png) |
-| Audit Logs | ![Audit Logs](screenshots/audit-logs.png) |
-| User Management | ![User Management](screenshots/user-management.png) |
+![Login](docs/screenshots/01-login.png)
 
 ---
+
+### 2. Dashboard
+
+![Dashboard](docs/screenshots/02-dashboard.png)
+
+---
+
+### 3. Assessment Workspace
+
+![Assessment Workspace](docs/screenshots/03-assessment-workspace.png)
+
+---
+
+### 4. Assessment History
+
+![Assessment History](docs/screenshots/04-assessment-history.png)
+
+---
+
+### 5. Host Discovery
+
+![Host Discovery](docs/screenshots/05-host-discovery.png)
+
+---
+
+### 6. Port Scan
+
+![Port Scan](docs/screenshots/06-port-scan.png)
+
+---
+
+### 7. Services
+
+![Services](docs/screenshots/07-services.png)
+
+---
+
+### 8. Vulnerabilities
+
+![Vulnerabilities](docs/screenshots/08-vulnerabilities.png)
+
+---
+
+### 9. CVE Intelligence
+
+![CVE Intelligence](docs/screenshots/09-cve-intelligence.png)
+
+---
+
+### 10. Exploit Verification
+
+![Exploit Verification](docs/screenshots/10-exploit-verification.png)
+
+---
+
+### 11. Exploitation
+
+![Exploitation](docs/screenshots/11-exploitation.png)
+
+---
+
+### 12. Packet Analysis
+
+![Packet Analysis](docs/screenshots/12-packet-analysis.png)
+
+---
+
+### 13. Reports
+
+![Reports](docs/screenshots/13-reports.png)
+
+---
+
+### 14. Audit Logs
+
+![Audit Logs](docs/screenshots/14-audit-logs.png)
+
+---
+
+### 15. User Management
+
+![User Management](docs/screenshots/15-user-management.png)
+
+---
+
+### 16. Settings
+
+![Settings](docs/screenshots/16-settings.png)
+
+
 
 ## Installation
 
