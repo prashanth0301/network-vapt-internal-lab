@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.schemas.artifact import (
     ArtifactContentResponse,
     ArtifactListResponse,
@@ -12,7 +13,11 @@ from app.schemas.artifact import (
 )
 from app.services.artifact_manager import artifact_manager
 
-router = APIRouter(prefix="/artifacts", tags=["Artifacts"])
+router = APIRouter(
+    prefix="/artifacts",
+    tags=["Artifacts"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _artifact_to_response(artifact) -> ArtifactResponse:

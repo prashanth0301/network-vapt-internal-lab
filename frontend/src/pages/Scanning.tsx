@@ -149,7 +149,7 @@ export function Scanning() {
       });
       const assessmentId = res.data?.assessment_id;
       if (assessmentId) {
-        setActiveAssessment(assessmentId, `Port Scan - ${target}`);
+        setActiveAssessment(assessmentId, `Port Scan - ${target}`, 'running');
         setStatusMessage(getStatusMessage('running', []));
         startPolling(assessmentId);
       } else {
@@ -180,7 +180,7 @@ export function Scanning() {
         target: target.trim(),
       });
       const id = createRes.data.id;
-      setActiveAssessment(id, createRes.data.name);
+      setActiveAssessment(id, createRes.data.name, 'draft');
       setStatusMessage('Starting assessment...');
       await startAssessment(id);
       setAssessmentStatus('running');

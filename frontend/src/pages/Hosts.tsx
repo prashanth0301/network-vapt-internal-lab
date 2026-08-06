@@ -107,7 +107,7 @@ export function Hosts() {
       const res = await startDiscovery({ target, scan_type: 'ping_sweep' });
       const assessmentId = res.data?.assessment_id;
       if (assessmentId) {
-        setActiveAssessment(assessmentId, `Host Discovery - ${target}`);
+        setActiveAssessment(assessmentId, `Host Discovery - ${target}`, 'running');
         startPolling(assessmentId);
       } else {
         loadHosts();

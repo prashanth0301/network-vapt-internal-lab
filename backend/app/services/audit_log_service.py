@@ -10,7 +10,7 @@ import io
 import json
 from datetime import UTC, date, datetime, time
 
-from sqlalchemy import cast, func, not_, or_, select
+from sqlalchemy import String, cast, func, not_, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -80,15 +80,24 @@ def _build_query(
 
     if search:
         term = f"%{search.strip()}%"
-        query = query.where(
-            or_(
-                User.username.ilike(term),
-                AuditLog.action.ilike(term),
-                AuditLog.resource_type.ilike(term),
-                AuditLog.resource_id.ilike(term),
-                AuditLog.ip_address.ilike(term),
-            )
-        )
+        search_conditions = [
+            User.username.ilike(term),
+            User.role.ilike(term),
+            User.email.ilike(term),
+            AuditLog.action.ilike(term),
+            AuditLog.resource_type.ilike(term),
+            AuditLog.resource_id.ilike(term),
+            AuditLog.ip_address.ilike(term),
+            AuditLog.user_agent.ilike(term),
+            cast(AuditLog.details, String).ilike(term),
+            cast(AuditLog.timestamp, String).ilike(term),
+        ]
+        search_keyword = search.strip().lower()
+        if search_keyword in ("success", "ok"):
+            search_conditions.append(_status_condition("success"))
+        elif search_keyword in _FAILURE_STATUS_VALUES:
+            search_conditions.append(_status_condition("failure"))
+        query = query.where(or_(*search_conditions))
     if user:
         query = query.where(User.username.ilike(f"%{user.strip()}%"))
     if action:

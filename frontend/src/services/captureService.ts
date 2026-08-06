@@ -59,6 +59,9 @@ export interface CaptureInterface {
   id: string;
   name: string;
   description: string;
+  ip_address?: string | null;
+  mac_address?: string | null;
+  status?: string | null;
 }
 
 export interface CaptureStatus {
@@ -70,9 +73,10 @@ export interface CaptureStatus {
   interface?: string | null;
 }
 
-export async function getCaptures(assessmentId?: string): Promise<PacketCapture[]> {
+export async function getCaptures(assessmentId?: string, search?: string): Promise<PacketCapture[]> {
   const params = new URLSearchParams();
   if (assessmentId) params.set('assessment_id', assessmentId);
+  if (search) params.set('search', search);
   const res = await apiClient.get(`/captures?${params}`);
   return res.data?.data || [];
 }
@@ -146,5 +150,22 @@ export async function stopLiveCapture(captureId: string): Promise<{ data?: unkno
   const res = await apiClient.post('/captures/stop', params.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
+  return res.data;
+}
+
+export async function downloadCapture(captureId: string, filename: string): Promise<void> {
+  const res = await apiClient.get(`/captures/${captureId}/download`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || `capture_${captureId}.pcap`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function deleteCapture(captureId: string): Promise<{ message: string }> {
+  const res = await apiClient.delete(`/captures/${captureId}`);
   return res.data;
 }

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.models.exploit import Exploit
 from app.models.host import Host
 from app.models.packet_capture import PacketCapture
@@ -35,7 +36,11 @@ from app.services.assessment.exceptions import (
 from app.services.assessment.lifecycle import AssessmentStatus
 from app.services.assessment_cleanup import delete_assessment_cascade
 
-router = APIRouter(prefix="/assessments", tags=["Assessments"])
+router = APIRouter(
+    prefix="/assessments",
+    tags=["Assessments"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _record_duration_seconds(

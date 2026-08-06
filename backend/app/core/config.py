@@ -68,9 +68,9 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
 
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
-    REPORTS_DIR: Path = BASE_DIR.parent / "reports"
-    SCREENSHOTS_DIR: Path = BASE_DIR.parent / "screenshots"
-    WIRESHARK_DIR: Path = BASE_DIR.parent / "wireshark"
+    REPORTS_DIR: Path = BASE_DIR / "reports"
+    SCREENSHOTS_DIR: Path = BASE_DIR / "screenshots"
+    WIRESHARK_DIR: Path = BASE_DIR / "wireshark"
 
     @field_validator("LOG_LEVEL")
     @classmethod

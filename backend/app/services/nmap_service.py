@@ -1,12 +1,15 @@
 import asyncio
+import ipaddress
 import os
 import shutil
+import socket
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+import psutil
 from loguru import logger
 
 
@@ -54,13 +57,13 @@ SCAN_TYPES = {
         "args": [
             "-sn",
             "-n",
-            "-PS21,22,25,80,135,139,443,445,3389",
+            "-PE",
             "--max-retries", "0",
             "--max-rtt-timeout", "1000ms",
             "--min-parallelism", "100",
             "--host-timeout", "8s",
         ],
-        "description": "ICMP echo, TCP SYN to 21,22,25,80,135,139,443,445,3389, TCP ACK to 80, ICMP timestamp",
+        "description": "ARP discovery on directly connected subnets, ICMP echo request otherwise",
     },
     "arp_scan": {
         "args": ["-sn", "-PR"],
@@ -158,6 +161,69 @@ def _find_nmap() -> str:
     return "nmap"
 
 
+def _get_local_networks() -> list[ipaddress.IPv4Network]:
+    """Return the directly connected IPv4 subnets of this machine."""
+    networks: list[ipaddress.IPv4Network] = []
+    try:
+        addrs = psutil.net_if_addrs()
+    except Exception:
+        return networks
+
+    for ifname, ifaddrs in addrs.items():
+        for addr in ifaddrs:
+            if addr.family != socket.AF_INET:
+                continue
+            ip = addr.address
+            netmask = addr.netmask
+            if not ip or not netmask:
+                continue
+            try:
+                if ipaddress.ip_address(ip).is_loopback:
+                    continue
+                networks.append(
+                    ipaddress.ip_network(f"{ip}/{netmask}", strict=False)
+                )
+            except ValueError:
+                continue
+    return networks
+
+
+def _is_local_target(
+    target: str,
+    local_networks: Optional[list[ipaddress.IPv4Network]] = None,
+) -> bool:
+    """True when the target belongs to a directly connected local subnet."""
+    if local_networks is None:
+        local_networks = _get_local_networks()
+    if not local_networks:
+        return False
+
+    candidates: list[ipaddress.IPv4Address] = []
+    try:
+        stripped = target.strip()
+        if "/" in stripped:
+            candidates.append(ipaddress.ip_network(stripped, strict=False).network_address)
+        elif "-" in stripped:
+            candidates.append(ipaddress.ip_address(stripped.split("-")[0].strip()))
+        else:
+            try:
+                candidates.append(ipaddress.ip_address(stripped))
+            except ValueError:
+                candidates.append(ipaddress.ip_address(socket.gethostbyname(stripped)))
+    except (ValueError, OSError):
+        return False
+
+    return any(
+        any(candidate in network for network in local_networks)
+        for candidate in candidates
+    )
+
+
+def _ping_sweep_probe(target: str) -> str:
+    """Pick the ping sweep probe: -PR for local subnets, -PE otherwise."""
+    return "-PR" if _is_local_target(target) else "-PE"
+
+
 def build_command(
     scan_type: str,
     target: str,
@@ -171,6 +237,15 @@ def build_command(
         cmd = [nmap_bin] + scan_config["args"]
     else:
         cmd = [nmap_bin, "-sn"]
+
+    if scan_type == "ping_sweep":
+        probe = _ping_sweep_probe(target)
+        try:
+            cmd[cmd.index("-PE")] = probe
+        except ValueError:
+            cmd.append(probe)
+        if probe == "-PE":
+            cmd.extend(["-PS80,443"])
 
     if ports:
         cmd.extend(["-p", ports])

@@ -35,7 +35,7 @@ export function Header({ title }: HeaderProps) {
       return;
     }
     const selected = assessments.find((a) => a.id === value);
-    setActiveAssessment(value, selected?.name);
+    setActiveAssessment(value, selected?.name, selected?.status);
     setActiveId(value);
   };
 
@@ -58,7 +58,7 @@ export function Header({ title }: HeaderProps) {
             {assessments.length === 0 && !activeId ? 'No assessments' : 'All assessments'}
           </option>
           {assessments.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
+            <option key={a.id} value={a.id}>{a.name}{a.status === 'draft' ? ' (draft)' : ''}</option>
           ))}
         </select>
 

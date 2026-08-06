@@ -3,10 +3,14 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cve import CVE
+from app.models.exploit import Exploit
+from app.models.host import Host
+from app.models.port import Port
+from app.models.service import Service
 from app.models.vulnerability import Vulnerability
 from app.services.cve_provider import CVEResult
 from app.services.cve_provider_manager import cve_provider_manager
@@ -165,11 +169,22 @@ async def get_all_cves(
             aid = uuid.UUID(assessment_id)
         except ValueError:
             return [], 0
-        query = query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+        query = query.join(
+            Vulnerability, CVE.vuln_id == Vulnerability.id, isouter=True
+        )
         query = query.where(Vulnerability.scan_id == aid)
         count_query = (
-            count_query.join(Vulnerability, CVE.vuln_id == Vulnerability.id)
+            count_query.join(
+                Vulnerability, CVE.vuln_id == Vulnerability.id, isouter=True
+            )
             .where(Vulnerability.scan_id == aid)
+        )
+    elif search:
+        query = query.join(
+            Vulnerability, CVE.vuln_id == Vulnerability.id, isouter=True
+        )
+        count_query = count_query.join(
+            Vulnerability, CVE.vuln_id == Vulnerability.id, isouter=True
         )
 
     if severity:
@@ -185,14 +200,62 @@ async def get_all_cves(
         query = query.where(CVE.cve_id.like(f"CVE-{year}-%"))
         count_query = count_query.where(CVE.cve_id.like(f"CVE-{year}-%"))
     if search:
-        query = query.where(
-            CVE.description.ilike(f"%{search}%")
-            | CVE.cve_id.ilike(f"%{search}%")
+        search_term = f"%{search}%"
+        exploit_count_subq = (
+            select(Exploit.cve.label("cve"), func.count(Exploit.id).label("cnt"))
+            .group_by(Exploit.cve)
+            .subquery()
         )
-        count_query = count_query.where(
-            CVE.description.ilike(f"%{search}%")
-            | CVE.cve_id.ilike(f"%{search}%")
+        query = query.join(
+            exploit_count_subq,
+            exploit_count_subq.c.cve == CVE.cve_id,
+            isouter=True,
         )
+        count_query = count_query.join(
+            exploit_count_subq,
+            exploit_count_subq.c.cve == CVE.cve_id,
+            isouter=True,
+        )
+        query = query.join(Host, Vulnerability.host_id == Host.id, isouter=True)
+        count_query = count_query.join(
+            Host, Vulnerability.host_id == Host.id, isouter=True
+        )
+        query = query.join(
+            Service, Vulnerability.service_id == Service.id, isouter=True
+        )
+        count_query = count_query.join(
+            Service, Vulnerability.service_id == Service.id, isouter=True
+        )
+        query = query.join(Port, Vulnerability.port_id == Port.id, isouter=True)
+        count_query = count_query.join(
+            Port, Vulnerability.port_id == Port.id, isouter=True
+        )
+        search_conditions = [
+            CVE.cve_id.ilike(search_term),
+            CVE.description.ilike(search_term),
+            CVE.cvss_severity.ilike(search_term),
+            cast(CVE.cvss_score, String).ilike(search_term),
+            cast(CVE.cvss_v2, String).ilike(search_term),
+            cast(CVE.cvss_v3, String).ilike(search_term),
+            cast(CVE.epss_score, String).ilike(search_term),
+            cast(CVE.kev_status, String).ilike(search_term),
+            cast(CVE.exploit_available, String).ilike(search_term),
+            cast(exploit_count_subq.c.cnt, String).ilike(search_term),
+            CVE.vendor.ilike(search_term),
+            CVE.product.ilike(search_term),
+            func.array_to_string(CVE.affected_versions, ",").ilike(search_term),
+            Host.ip_address.cast(String).ilike(search_term),
+            Host.hostname.ilike(search_term),
+            Service.name.ilike(search_term),
+            cast(Port.port, String).ilike(search_term),
+            Port.protocol.ilike(search_term),
+            func.concat(
+                cast(Port.port, String), "/", Port.protocol
+            ).ilike(search_term),
+        ]
+        search_filter = or_(*search_conditions)
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
     if kev_only:
         query = query.where(CVE.kev_status == True)
         count_query = count_query.where(CVE.kev_status == True)

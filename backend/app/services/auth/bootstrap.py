@@ -51,8 +51,7 @@ async def bootstrap_default_admin() -> None:
         logger.info("Users already exist - default admin bootstrap skipped")
         return
     logger.warning(
-        "Created default development admin '{username}' with password '{password}' "
-        "- change it or disable AUTO_CREATE_ADMIN for production",
+        "Created default development admin '{username}' - change its password "
+        "or disable AUTO_CREATE_ADMIN for production",
         username=user.username,
-        password=settings.ADMIN_PASSWORD,
     )

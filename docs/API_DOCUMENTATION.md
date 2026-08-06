@@ -190,7 +190,7 @@ POST /auth/logout
 | `DELETE` | `/hosts/{id}` | Yes | Delete a host record |
 | `POST` | `/hosts/discover` | Yes | Trigger host discovery scan |
 
-**List Query Parameters:** `status`, `alive_only`, `assessment_id`, `page`, `per_page`
+**List Query Parameters:** `status`, `alive_only`, `assessment_id`, `search`, `page`, `per_page`
 
 ---
 
@@ -219,6 +219,8 @@ POST /auth/logout
 | `GET` | `/services/by-assessment/{assessment_id}` | Yes | Services for a specific assessment |
 | `POST` | `/services/enrich` | Yes | Enrich services with intelligence |
 
+**List Query Parameters:** `category`, `confidence_min`, `search`, `assessment_id`, `sort_by`, `sort_order`, `page`, `per_page`
+
 ---
 
 ### Vulnerabilities
@@ -234,7 +236,7 @@ POST /auth/logout
 | `GET` | `/vulnerabilities/by-assessment/{assessment_id}` | Yes | Vulns for a specific assessment |
 | `POST` | `/vulnerabilities/scan` | Yes | Start vulnerability scan |
 
-**List Query Parameters:** `severity`, `host_id`, `service_id`, `scanner`, `search`, `page`, `per_page`
+**List Query Parameters:** `severity`, `host_id`, `service_name`, `search`, `assessment_id`, `sort_by`, `sort_order`, `page`, `per_page`
 
 ---
 
@@ -249,7 +251,7 @@ POST /auth/logout
 | `GET` | `/cves/{cve_id}` | Yes | Get a single CVE |
 | `GET` | `/cves/by-vulnerability/{vuln_id}` | Yes | CVEs for a specific vulnerability |
 
-**List Query Parameters:** `severity`, `vendor`, `product`, `year`, `kev_only`, `page`, `per_page`
+**List Query Parameters:** `severity`, `vendor`, `product`, `year`, `search`, `kev_only`, `assessment_id`, `sort_by`, `sort_order`, `page`, `per_page`
 
 ---
 
@@ -279,6 +281,8 @@ POST /auth/logout
 | `PATCH` | `/reports/{id}` | Yes | Rename a report |
 | `DELETE` | `/reports/{id}` | Yes | Delete a report |
 
+**List Query Parameters:** `assessment_id`, `report_type`, `search`, `sort_by`, `sort_order`, `page`, `per_page`
+
 **Generate Parameters:** `report_type` (executive/technical/compliance), `output_format` (json/html/pdf), `assessment_id`
 
 ---
@@ -287,13 +291,15 @@ POST /auth/logout
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/captures` | Yes | List packet captures |
+| `GET` | `/captures` | Yes | List packet captures (`search` param: filter by filename, protocol, date) |
 | `GET` | `/captures/protocols` | Yes | Protocol distribution stats |
 | `GET` | `/captures/interfaces` | Yes | Available network interfaces |
 | `GET` | `/captures/{id}` | Yes | Get capture details |
 | `GET` | `/captures/{id}/packets` | Yes | List packets (paginated) |
 | `GET` | `/captures/{id}/conversations` | Yes | List conversations |
 | `GET` | `/captures/{id}/status` | Yes | Live capture status |
+| `GET` | `/captures/{id}/download` | Yes | Download the stored PCAP file (`application/vnd.tcpdump.pcap`, `Content-Disposition: attachment`; 404 when the capture or its file is missing) |
+| `DELETE` | `/captures/{id}` | Yes | Delete capture, packets, conversations, and PCAP file (admin only) |
 | `POST` | `/captures/upload` | Yes | Upload PCAP file |
 | `POST` | `/captures/start` | Yes | Start live capture |
 | `POST` | `/captures/stop` | Yes | Stop running capture |

@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AuthContext } from '../context/AuthContext';
+import { useToast } from '../hooks/useToast';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { getApiError } from '../services/api';
 import {
+  deleteCapture,
   getCapture,
   getCaptureConversations,
   getCaptureInterfaces,
@@ -15,6 +18,7 @@ import {
   startLiveCapture,
   stopLiveCapture,
   uploadCapture,
+  downloadCapture,
   type CaptureConversation,
   type CaptureInterface,
   type CapturePacket,
@@ -44,6 +48,12 @@ function formatDuration(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
+function interfaceLabel(iface: CaptureInterface): string {
+  const base = iface.description || iface.name || iface.id;
+  if (iface.ip_address) return `${base} (${iface.ip_address})`;
+  return base;
+}
+
 export function Packets() {
   const [captures, setCaptures] = useState<PacketCapture[]>([]);
   const [protocolStats, setProtocolStats] = useState<ProtocolStat[]>([]);
@@ -55,7 +65,6 @@ export function Packets() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const [interfaces, setInterfaces] = useState<CaptureInterface[]>([]);
-  const [interfacesError, setInterfacesError] = useState<string | null>(null);
   const [selectedInterface, setSelectedInterface] = useState('auto');
   const [liveStatus, setLiveStatus] = useState<CaptureStatus | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -69,6 +78,17 @@ export function Packets() {
   const [packetProtocol, setPacketProtocol] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const searchTimer = useRef<number | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<PacketCapture | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const { hasRole } = useContext(AuthContext);
+  const { addToast } = useToast();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tick = useAssessmentChangeTick();
@@ -80,7 +100,7 @@ export function Packets() {
     try {
       const assessmentId = getActiveAssessmentId() ?? undefined;
       const [capList, protoList] = await Promise.all([
-        getCaptures(assessmentId),
+        getCaptures(assessmentId, search || undefined),
         getCaptureProtocols(assessmentId),
       ]);
       setCaptures(capList);
@@ -93,21 +113,27 @@ export function Packets() {
     } finally {
       setLoading(false);
     }
-  }, [tick]);
+  }, [tick, search]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(() => setSearch(searchInput.trim()), 350);
+    return () => {
+      if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    };
+  }, [searchInput]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const list = await getCaptureInterfaces();
-        if (!cancelled) {
-          setInterfaces(list);
-          setInterfacesError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setInterfacesError(getApiError(e));
+        if (!cancelled) setInterfaces(list);
+      } catch {
+        // Leave the interface list empty; the UI shows a friendly
+        // "No capture interfaces detected." message in that case.
       }
     })();
     return () => { cancelled = true; };
@@ -211,6 +237,39 @@ export function Packets() {
     setPacketProtocol('');
   };
 
+  const handleDownload = async () => {
+    if (!selectedId || downloading) return;
+    setDownloading(true);
+    setDetailError(null);
+    try {
+      const filename = captureDetail?.filename || `live_${selectedId}.pcap`;
+      await downloadCapture(selectedId, filename);
+    } catch (e) {
+      setDetailError(getApiError(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteCapture(deleteTarget.id);
+      addToast({ type: 'success', title: 'Capture deleted', message: `Deleted ${deleteTarget.filename}` });
+      setDeleteTarget(null);
+      if (selectedId === deleteTarget.id) {
+        setSelectedId(null);
+        setCaptureDetail(null);
+      }
+      await fetchData();
+    } catch (e) {
+      addToast({ type: 'error', title: 'Delete failed', message: getApiError(e) });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleStartCapture = async () => {
     setError(null);
     setInfoMessage(null);
@@ -279,6 +338,11 @@ export function Packets() {
         <Card
           title={`Analysis - ${detail.filename}`}
           subtitle={`${detail.packets} packets | ${detail.conversation_count ?? 0} conversations | analyzed ${detail.date}`}
+          action={
+            <Button variant="secondary" size="sm" onClick={handleDownload} disabled={downloading}>
+              {downloading ? 'Downloading...' : 'Download PCAP'}
+            </Button>
+          }
         >
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-4">
@@ -401,7 +465,11 @@ export function Packets() {
           )}
           {packets.length === 0 ? (
             <p className="text-sm text-surface-400 py-4">
-              {detailLoading ? 'Loading packets...' : 'No packets match the current filter.'}
+              {detailLoading
+                ? 'Loading packets...'
+                : packetsTotal === 0 && !packetProtocol
+                  ? 'No packets recorded for this capture.'
+                  : 'No packets match the current filter.'}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -482,7 +550,7 @@ export function Packets() {
               <option value="auto">Auto (loopback / default)</option>
               {interfaces.map((iface) => (
                 <option key={iface.id} value={iface.id}>
-                  {iface.description || iface.name}
+                  {interfaceLabel(iface)}
                 </option>
               ))}
             </select>
@@ -498,8 +566,8 @@ export function Packets() {
           </Button>
           <input type="file" ref={fileInputRef} accept=".pcap,.pcapng,.cap" className="hidden" onChange={handleFileChange} />
         </div>
-        {interfacesError && !capturing && (
-          <p className="text-xs text-warning mb-3">Interfaces unavailable: {interfacesError}</p>
+        {!capturing && interfaces.length === 0 && (
+          <p className="text-xs text-warning mb-3">No capture interfaces detected.</p>
         )}
         {capturing && (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 p-3 rounded-lg border border-critical/30 bg-critical/5 text-sm">
@@ -595,6 +663,18 @@ export function Packets() {
           </div>
 
           <Card title="Capture History" subtitle={`${captures.length} captures - click a capture to view analysis`}>
+            {captures.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-surface-500 mb-1">Search captures</label>
+                <input
+                  type="text"
+                  placeholder="Search by filename, protocol, date..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="input w-full text-sm"
+                />
+              </div>
+            )}
             {captures.length === 0 ? (
               <div className="text-center py-8 text-surface-400">
                 <p className="text-sm">No captures recorded for this assessment.</p>
@@ -609,6 +689,7 @@ export function Packets() {
                       <th className="text-right px-4 py-3 text-xs font-medium text-surface-500 uppercase">Packets</th>
                       <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Duration</th>
                       <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Status</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-surface-500 uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
@@ -629,6 +710,18 @@ export function Packets() {
                             {cap.status}
                           </Badge>
                         </td>
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          {hasRole('administrator') && (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => setDeleteTarget(cap)}
+                              disabled={cap.status === 'capturing'}
+                            >
+                              Delete
+                            </Button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -639,6 +732,26 @@ export function Packets() {
 
           {selected && renderDetail()}
         </>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">Delete Capture</h3>
+            <p className="text-sm text-surface-500 mb-2">
+              You are about to permanently delete <span className="font-semibold text-surface-800 dark:text-surface-200">{deleteTarget.filename}</span>.
+            </p>
+            <p className="text-sm text-critical bg-critical/10 rounded-lg p-3 mb-6">
+              This will remove all packets, conversations, and the PCAP file. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+              <Button variant="danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

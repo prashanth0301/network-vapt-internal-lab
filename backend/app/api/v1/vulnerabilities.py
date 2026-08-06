@@ -1,10 +1,11 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.vulnerability import (
     VulnerabilityResponse,
@@ -22,7 +23,11 @@ from app.services.vulnerability_assessment_service import (
     get_vulnerability_summary,
 )
 
-router = APIRouter(prefix="/vulnerabilities", tags=["Vulnerabilities"])
+router = APIRouter(
+    prefix="/vulnerabilities",
+    tags=["Vulnerabilities"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=PaginatedResponse[VulnerabilityResponse])
@@ -112,7 +117,7 @@ async def get_vulnerability(
 ):
     vuln = await get_vulnerability_by_id(db, vuln_id)
     if not vuln:
-        return SuccessResponse(data=None, message=f"Vulnerability '{vuln_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Vulnerability '{vuln_id}' not found")
     return SuccessResponse(data=_vuln_to_response(vuln), message="Vulnerability retrieved")
 
 

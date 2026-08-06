@@ -2,365 +2,330 @@
 
 > **Internal Network Vulnerability Assessment & Penetration Testing Platform**
 
-A full-stack cybersecurity web application that orchestrates the complete internal network penetration testing lifecycle. Integrates Nmap, Nessus/OpenVAS, Metasploit Framework, and Wireshark into a unified dashboard with professional report generation.
+A full-stack cybersecurity web application that automates the complete internal network VAPT lifecycle — from host discovery and port scanning through vulnerability assessment, CVE intelligence, exploit verification, and packet analysis — ending with professional executive, technical, and compliance reports.
 
+Built on **FastAPI + PostgreSQL 16** (backend) and **React 18 + TypeScript** (frontend), with pluggable **Nmap / OpenVAS** scanning, **Metasploit RPC** exploitation, and **Wireshark (dumpcap/tshark)** packet capture — all behind role-based access control with a complete audit trail.
+
+## Project Badges
+
+[![Version](https://img.shields.io/badge/Version-1.0.0-blue?logo=semver)](https://github.com/prashanth0301/Network-VAPT-Internal-Lab/releases)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0%20Async-D71F00?logo=sqlalchemy)](https://www.sqlalchemy.org)
 [![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?logo=typescript)](https://www.typescriptlang.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?logo=postgresql)](https://postgresql.org)
+[![Vite](https://img.shields.io/badge/Vite-5+-646CFF?logo=vite)](https://vitejs.dev)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql)](https://postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker)](https://docker.com)
-[![VirtualBox](https://img.shields.io/badge/VirtualBox-7+-183A61?logo=virtualbox)](https://virtualbox.org)
+[![Metasploit](https://img.shields.io/badge/Metasploit-6.x-25292e?logo=metasploit)](https://www.metasploit.com)
+[![Tests](https://img.shields.io/badge/Tests-647%20passing-brightgreen)]()
 
 ---
 
-## Architecture
+## Table of Contents
 
-```
-┌──────────┐    ┌──────────┐    ┌────────────┐    ┌──────────────┐
-│  React   │───>│  FastAPI │───>│ Assessment │───>│  PostgreSQL  │
-│ Dashboard│    │  Backend │    │   Engine   │    │  Database    │
-└──────────┘    └──────────┘    └─────┬──────┘    └──────────────┘
-                                      │
-                        ┌─────────────┼─────────────┐
-                        ▼             ▼             ▼
-                      Nmap       Nessus/OpenVAS  Metasploit
-                                      │
-                                ┌─────▼─────┐
-                                │  Wireshark │
-                                │  (TShark)  │
-                                └───────────┘
-```
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, TypeScript, Tailwind CSS 3, Vite 5, Recharts, React Router v6, Axios |
-| Backend | FastAPI 0.115+, Python 3.11+, SQLAlchemy 2.0 Async, Pydantic v2, Loguru |
-| Database | PostgreSQL 16, Alembic migrations |
-| Security Tools | Nmap 7.94+, OpenVAS/Nessus, Metasploit 6.x, TShark 4.x |
-| Virtualization | VirtualBox 7+ / VMware Workstation Pro |
-| Containerization | Docker, Docker Compose |
-| CI/CD | GitHub Actions |
-| Code Quality | Black, Ruff, isort, mypy, pre-commit |
-
----
-
-## Backend Architecture
-
-```
-backend/
-├── app/
-│   ├── api/                 # REST API layer
-│   │   ├── router.py        # Root router aggregator
-│   │   └── v1/              # API v1 endpoints
-│   │       ├── __init__.py  # V1 router mounting
-│   │       └── health.py    # Health check endpoint
-│   ├── core/                # Application core
-│   │   ├── config.py        # Pydantic Settings (env validation)
-│   │   ├── database.py      # SQLAlchemy async engine + session
-│   │   ├── dependencies.py  # Dependency injection
-│   │   ├── exceptions.py    # Custom exception hierarchy
-│   │   └── logging.py       # Structured logging (Loguru)
-│   ├── middleware/           # FastAPI middleware
-│   │   ├── cors.py          # CORS configuration
-│   │   └── error_handler.py # Global exception handlers
-│   ├── models/              # SQLAlchemy ORM models (12 tables)
-│   │   ├── base.py          # Declarative Base + Mixins
-│   │   ├── host.py          # hosts table
-│   │   ├── port.py          # ports table
-│   │   ├── service.py       # services table
-│   │   ├── scan.py          # scans table
-│   │   ├── vulnerability.py # vulnerabilities table
-│   │   ├── cve.py           # cves table
-│   │   ├── exploit.py       # exploits table
-│   │   ├── exploit_run.py   # exploit_runs table
-│   │   ├── packet_capture.py# packet_captures table
-│   │   ├── report.py        # reports table
-│   │   ├── log.py           # logs table
-│   │   └── setting.py       # settings table
-│   ├── schemas/             # Pydantic validation schemas
-│   │   ├── common.py        # Response wrappers, pagination
-│   │   ├── health.py        # Health check schema
-│   │   ├── host.py          # Host CRUD schemas
-│   │   └── scan.py          # Scan schemas
-│   ├── services/            # Business logic
-│   │   ├── assessment/      # Assessment Engine (Phase 4)
-│   │   │   ├── manager.py   # Central orchestrator
-│   │   │   ├── pipeline.py  # Stage definitions + DAG resolution
-│   │   │   ├── runner.py    # Background task execution
-│   │   │   ├── lifecycle.py # Status state machines
-│   │   │   ├── progress_tracker.py # Weight-based progress
-│   │   │   ├── stage_manager.py    # Pluggable handlers
-│   │   │   └── exceptions.py       # Engine exceptions
-│   ├── utils/               # Helpers
-│   └── main.py              # FastAPI app with lifespan events
-├── alembic/                 # Database migrations
-│   ├── versions/            # Migration versions
-│   │   └── 001_initial_schema.py  # Initial 12-table migration
-│   └── env.py               # Async Alembic environment
-├── tests/                   # Pytest test suite
-│   ├── conftest.py          # Async fixtures
-│   └── test_health.py       # Health endpoint tests (5 cases)
-├── alembic.ini              # Alembic configuration
-├── pyproject.toml           # Ruff, isort, black, pytest config
-├── .pre-commit-config.yaml  # Pre-commit hooks
-├── requirements.txt         # Core Python dependencies
-├── requirements-dev.txt     # Development & testing dependencies
-└── requirements-security.txt# Optional security tool integrations
-```
-
-## Frontend Architecture
-
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── layout/            # App shell components
-│   │   │   ├── Sidebar.tsx    # Collapsible navigation (9 routes)
-│   │   │   ├── Header.tsx     # Theme toggle + user avatar
-│   │   │   ├── Breadcrumbs.tsx# Auto-generated breadcrumb trail
-│   │   │   └── DashboardLayout.tsx  # Main layout shell
-│   │   └── ui/                # Reusable component library
-│   │       ├── Button.tsx     # 4 variants + loading state
-│   │       ├── Card.tsx       # Section container with header
-│   │       ├── Badge.tsx      # Status/tag indicator
-│   │       ├── Table.tsx      # Generic typed data table
-│   │       ├── Modal.tsx      # Dialog with backdrop
-│   │       ├── StatCard.tsx   # Dashboard metric card
-│   │       ├── ProgressBar.tsx# Animated progress indicator
-│   │       ├── LoadingSpinner.tsx # Loading state
-│   │       └── EmptyState.tsx # Empty data placeholder
-│   ├── context/               # React context providers
-│   │   ├── ThemeContext.tsx    # Dark/light theme + persistence
-│   │   └── ToastContext.tsx   # Toast notification system
-│   ├── hooks/                 # Custom React hooks
-│   │   ├── useTheme.ts
-│   │   ├── useToast.ts
-│   │   └── useApi.ts          # Generic async state manager
-│   ├── pages/                 # Page components (10 pages)
-│   │   ├── Dashboard.tsx      # Mock stats, chart, health status
-│   │   ├── Workspace.tsx      # Assessment workflow UI
-│   │   ├── Hosts.tsx          # Host table with discovery
-│   │   ├── Scanning.tsx       # Port scanner UI
-│   │   ├── Vulnerabilities.tsx# Vulnerability listing
-│   │   ├── Exploitation.tsx   # Metasploit module UI
-│   │   ├── Packets.tsx        # PCAP capture UI
-│   │   ├── Reports.tsx        # Report generation UI
-│   │   ├── Settings.tsx       # Configuration page
-│   │   ├── Error404.tsx       # 404 page
-│   │   └── Error500.tsx       # 500 page
-│   ├── services/              # API client layer
-│   │   ├── api.ts             # Axios instance + interceptors
-│   │   └── healthService.ts   # Health check API
-│   ├── types/                 # TypeScript definitions
-│   │   ├── common.ts          # ApiResponse, pagination, nav
-│   │   ├── health.ts, host.ts, scan.ts, dashboard.ts
-│   ├── router/index.tsx       # Route definitions (10 routes)
-│   ├── utils/                 # Helpers + constants
-│   ├── App.tsx                # Root component
-│   ├── main.tsx               # Entry point
-│   └── index.css              # Tailwind + custom utilities
-├── package.json
-├── vite.config.ts             # Vite + proxy config
-├── tailwind.config.js         # Custom theme (colors, fonts)
-└── tsconfig.json              # Strict TypeScript config
-```
-
-### Key Frontend Features
-
-| Feature | Implementation |
-|---------|---------------|
-| Build Tool | Vite 5 (fast HMR, native ESM) |
-| Styling | Tailwind CSS 3 with dark mode via `class` strategy |
-| Routing | React Router v6 with nested layouts |
-| State Management | React Context + custom hooks (no Redux overhead) |
-| HTTP Client | Axios with auth/error interceptors |
-| Charts | Recharts (PieChart on Dashboard) |
-| Theme | Dark/light toggle, `localStorage` persistence |
-| Type Safety | Strict TypeScript across all 51 source files |
-| API Integration | Vite dev proxy `/api` → backend `:8000` |
-
-### Backend Features
-
-| Feature | Implementation |
-|---------|---------------|
-| Async Database | SQLAlchemy 2.0 + asyncpg, `AsyncSession`, async lifespan |
-| UUID PKs | All tables use UUID primary keys |
-| JSONB Columns | Scan parameters, protocol stats, log details |
-| Structured Logging | Loguru with JSON output + 10 MB file rotation |
-| Exception Hierarchy | 5 custom exception types with structured error responses |
-| Config Validation | Environment variables validated on startup |
-| API Versioning | `/api/v1/` prefix with router aggregation |
-| Dependency Injection | `get_db()` with automatic commit/rollback |
-| Docker Support | Dockerfile + docker-compose (PostgreSQL + backend) |
-| CI Ready | GitHub Actions workflow, pre-commit hooks configured |
-
----
-
-## Virtual Lab Environment
-
-### Network Topology
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Host-Only Network                          │
-│                    192.168.56.0/24                            │
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    │
-│  │  Kali Linux  │    │Metasploitable│    │  Windows 7   │    │
-│  │  192.168.56.10│   │  192.168.56.20│   │  192.168.56.30│   │
-│  │  Attacker     │    │  Target 1     │    │  Target 2    │    │
-│  └──────────────┘    └──────────────┘    └──────────────┘    │
-│                              ┌──────────────┐                 │
-│                              │Ubuntu Server │                 │
-│                              │192.168.56.40 │ (Optional)      │
-│                              └──────────────┘                 │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### IP Addressing Plan
-
-| Machine | Role | IP Address | vCPU | RAM | Disk |
-|---------|------|------------|------|-----|------|
-| Host Machine | Management | 192.168.56.1 | — | — | — |
-| Kali Linux | Attacker | 192.168.56.10 | 2 | 4 GB | 60 GB |
-| Metasploitable2 | Target 1 | 192.168.56.20 | 1 | 512 MB | 8 GB |
-| Windows 7 (Unpatched) | Target 2 | 192.168.56.30 | 2 | 2 GB | 40 GB |
-| Ubuntu Server | Target 3 (Optional) | 192.168.56.40 | 1 | 1 GB | 20 GB |
+- [Features](#features)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Folder Structure](#folder-structure)
+- [Screenshots](#screenshots)
+- [Installation](#installation)
+- [Running with Docker](#running-with-docker)
+- [Running Locally](#running-locally)
+- [Default Credentials & First Login](#default-credentials--first-login)
+- [API Documentation](#api-documentation)
+- [Version 1.0 Features](#version-10-features)
+- [Testing](#testing)
+- [Future Roadmap](#future-roadmap)
+- [License](#license)
+- [Ethical Use](#ethical-use)
 
 ---
 
 ## Features
 
-- **Host Discovery** — Nmap ping sweep, ARP discovery, live host detection
-- **Port Scanner** — TCP SYN, UDP, full port range, version detection, OS fingerprinting
-- **Service Enumeration** — Banner grabbing, service identification, version detection
-- **Vulnerability Assessment** — OpenVAS/Nessus integration, CVE identification, risk scoring
-- **CVE Intelligence** — CVSS v3 scoring, CWE mapping, exploit availability correlation
-- **Controlled Exploitation** — Metasploit RPC integration, session management, evidence capture
-- **Privilege Escalation** — Local enumeration, kernel exploit matching
-- **Lateral Movement** — Network pivoting, credential reuse, internal reconnaissance
-- **Packet Analysis** — PCAP capture, protocol statistics, TCP stream reassembly
-- **Report Generation** — Executive & technical reports in HTML, PDF, and Markdown
+- **6-Stage Assessment Pipeline** — Host Discovery → Port Scan → Service Intelligence → Vulnerability Assessment → CVE Intelligence → Exploit Verification, orchestrated by a pluggable stage engine with weighted progress tracking.
+- **Real-Time Dashboard** — overall risk score, severity distribution, vulnerability trends, top ports, service distribution, top vulnerable hosts, and an activity timeline.
+- **Assessment Selector** — scope every dashboard widget to a single active assessment.
+- **Scanner Integration** — pluggable Nmap and OpenVAS backends via the `VulnerabilityScanner` interface.
+- **CVE Intelligence** — NVD enrichment, EPSS scoring, KEV status, and vendor/product mapping.
+- **Exploit Verification** — Metasploit RPC module matching, exploit execution, and session tracking.
+- **Port Scanning & Service Enumeration** — TCP SYN / UDP scans, version detection, OS fingerprinting, banner grabbing, and service identification.
+- **Packet Analysis** — live capture, PCAP upload, protocol distribution, conversation tracking, and a timestamped packet viewer with automatic network interface detection.
+- **Report Generation** — Executive, Technical, and Compliance reports exported as **JSON, HTML, and PDF**.
+- **Global Search** — expanded server-side search across reports, services, hosts, assessment history, and audit logs.
+- **User Management** — RBAC with **3 roles** (`administrator`, `security_analyst`, `viewer`) and **9 granular permissions**.
+- **Audit Logging** — complete audit trail with CSV/JSON export.
+- **Health & Diagnostics** — `/api/v1/health` endpoint, structured JSON logging (Loguru), and Pydantic v2 validated configuration.
 
 ---
 
-## Project Structure
+## Architecture
+
+![Architecture Diagram](docs/images/architecture.png)
+
+> **Note:** `docs/images/architecture.png` is a placeholder. Replace it with the rendered architecture diagram before publishing.
+
+The platform follows a clean three-tier architecture:
 
 ```
-├── backend/               # FastAPI Python application (Phase 2)
++---------------------------------------------------+
+|                    Frontend                        |
+|  React 18 · TypeScript · Vite · Tailwind CSS      |
+|  20 pages · 18 services · 12 type modules         |
+|  Port 5173                                         |
++-------------------------+-------------------------+
+                          | HTTP (REST, JWT)
++-------------------------v-------------------------+
+|                     Backend                         |
+|  FastAPI · SQLAlchemy 2.0 (async) · Pydantic v2   |
+|  94 endpoints · 16 routers · 23+ services         |
+|  Port 8000                                          |
++-------------------------+-------------------------+
+                          | asyncpg (connection pool)
++-------------------------v-------------------------+
+|                   Database                          |
+|  PostgreSQL 16 · 17 tables · UUID PKs             |
+|  Port 5432 (Docker network only)                  |
++-------------------------+-------------------------+
+                          |
++-------------------------v-------------------------+
+|                 Scanner Layer                       |
+|  Nmap · OpenVAS · Metasploit · Wireshark          |
++---------------------------------------------------+
+```
+
+**Design principles:**
+
+- **Layered service pattern** — routers handle validation and auth; service modules hold business logic; SQLAlchemy models provide data access.
+- **Pluggable scanners** — the abstract `VulnerabilityScanner` interface allows Nmap / OpenVAS to be swapped or extended without touching the pipeline.
+- **UUID primary keys** — all 17 tables use server-generated UUID v4 keys.
+- **Background scanning** — long-running stages execute as background tasks with client-side progress polling.
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18, TypeScript 5, Vite 5, Tailwind CSS, Recharts, React Router v6, Axios |
+| **Backend** | FastAPI 0.115+, Python 3.11+, SQLAlchemy 2.0 Async, Pydantic v2, Loguru |
+| **Database** | PostgreSQL 16, asyncpg, Alembic migrations |
+| **Scanning** | Nmap 7.94+, OpenVAS (pluggable via `VulnerabilityScanner`) |
+| **Exploitation** | Metasploit Framework 6.x (msfrpcd RPC) |
+| **CVE Intelligence** | NVD API, EPSS scoring, KEV catalog |
+| **Packet Capture** | dumpcap / tshark (Wireshark), Npcap, scapy, psutil |
+| **Reporting** | Jinja2 templates, Markdown, ReportLab (PDF) |
+| **Deployment** | Docker, Docker Compose (backend, frontend, PostgreSQL, lab targets) |
+| **Virtualization (lab)** | VirtualBox 7+ / VMware Workstation Pro |
+| **Quality & CI** | GitHub Actions, Black, Ruff, isort, mypy, pre-commit |
+
+---
+
+## Folder Structure
+
+```
+Network-VAPT-Internal-Lab/
+├── backend/                  # FastAPI application
 │   ├── app/
-│   │   ├── api/           # REST API route handlers
-│   │   ├── core/          # Config, database, logging, exceptions
-│   │   ├── models/        # 12 SQLAlchemy ORM models
-│   │   ├── schemas/       # Pydantic validation schemas
-│   │   ├── services/      # Business logic (in progress)
-│   │   └── main.py        # FastAPI app with lifespan
-│   ├── alembic/           # DB migrations
-│   └── tests/             # Pytest suite
-├── frontend/              # React + TypeScript application (Phase 3)
+│   │   ├── api/v1/           # 16 API routers, 94 endpoints
+│   │   ├── core/             # Config, database, dependencies, logging
+│   │   ├── models/           # SQLAlchemy ORM models (17 tables)
+│   │   ├── schemas/          # Pydantic v2 validation schemas
+│   │   ├── services/         # Business logic (23+ modules)
+│   │   │   └── assessment/   # 6-stage pipeline engine
+│   │   └── main.py           # FastAPI app with lifespan events
+│   ├── alembic/              # Database migrations
+│   ├── tests/                # Pytest suite (647 tests)
+│   └── requirements*.txt     # Core / dev / security dependencies
+├── frontend/                 # React + TypeScript application
 │   ├── src/
-│   │   ├── components/    # Layout + UI component library (9 components)
-│   │   ├── context/       # Theme + Toast providers
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── pages/         # 10 page views (Dashboard to Settings)
-│   │   ├── services/      # Axios API client
-│   │   ├── types/         # TypeScript type definitions
-│   │   ├── router/        # Route definitions
-│   │   └── utils/         # Constants and helpers
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── tsconfig.json
-├── database/              # Schema migrations and scripts
-├── automation/            # Python automation scripts
-├── docs/                  # Architecture and design documentation
-├── reports/               # Generated report output files
-├── screenshots/           # Phase screenshots
-├── wireshark/             # PCAP capture files
-├── docker/                # Docker configuration files
-├── scripts/               # Utility shell scripts
-└── .github/workflows/     # CI/CD pipeline configuration
+│   │   ├── components/       # Layout + reusable UI components
+│   │   ├── context/          # Theme + Toast providers
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── pages/            # 20 page views
+│   │   ├── services/         # Axios API client (18 services)
+│   │   ├── types/            # TypeScript type definitions
+│   │   └── router/           # Route definitions
+│   ├── vite.config.ts        # Dev proxy /api → :8000
+│   └── tailwind.config.js
+├── docker/                   # Docker Compose + Dockerfiles
+│   ├── docker-compose.yml
+│   ├── backend.Dockerfile
+│   └── db/ frontend/ lab/ kali/
+├── docs/                     # Architecture, API, install, user docs
+├── reports/                  # Generated report output files
+├── screenshots/              # Screenshots for this README / releases
+├── captures/                 # PCAP capture files
+├── wireshark/                # Wireshark configuration / captures
+├── artifacts/                # Per-stage scan artifacts
+├── automation/               # Automation scripts
+├── scripts/                  # Utility scripts (e.g. create_admin)
+├── database/                 # Schema migrations and scripts
+├── .github/workflows/        # CI/CD pipeline
+├── .env.example              # Environment template
+└── README.md
 ```
 
 ---
 
-## Documentation
+## Screenshots
 
-All project documentation is in the `docs/` directory:
+> Placeholders — drop real captures into `screenshots/` and update the paths before publishing.
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | 6-layer system architecture with data flow |
-| [Database Schema](docs/DATABASE_SCHEMA.md) | 12-table relational schema with SQL DDL |
-| [API Plan](docs/API_PLAN.md) | 40+ REST endpoints across 12 resource groups |
-| [Lab Setup Guide](docs/LAB_SETUP_GUIDE.md) | Complete virtual lab setup with topology |
-| [Lab Credentials](docs/LAB_CREDENTIALS.md) | All VM credentials (isolated lab only) |
-| [Validation Checklist](docs/VALIDATION_CHECKLIST.md) | Lab connectivity verification checklist |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| Section | Screenshot |
+|---|---|
+| Dashboard | ![Dashboard](screenshots/dashboard.png) |
+| Assessment Workflow | ![Assessment Workflow](screenshots/assessment-workflow.png) |
+| Assessment History | ![Assessment History](screenshots/assessment-history.png) |
+| Hosts | ![Hosts](screenshots/hosts.png) |
+| Services | ![Services](screenshots/services.png) |
+| Vulnerabilities | ![Vulnerabilities](screenshots/vulnerabilities.png) |
+| Exploit Verification | ![Exploit Verification](screenshots/exploits.png) |
+| Packet Analysis | ![Packet Analysis](screenshots/packet-analysis.png) |
+| Reports | ![Reports](screenshots/reports.png) |
+| Audit Logs | ![Audit Logs](screenshots/audit-logs.png) |
+| User Management | ![User Management](screenshots/user-management.png) |
 
 ---
 
-## Getting Started
+## Installation
+
+### System Requirements
+
+| Component | Minimum |
+|---|---|
+| CPU | 4 cores |
+| RAM | 8 GB (16 GB recommended for virtual lab) |
+| Disk | 20 GB free |
+| Network | Adapter with access to target networks |
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 15+
-- VirtualBox 7+ or VMware Workstation
-- 16 GB+ RAM on host machine
-- Docker (optional, for containerized setup)
 
-### Quick Start
+| Software | Version |
+|---|---|
+| Docker | 24.0+ |
+| Docker Compose | v2.20+ |
+| Git | 2.30+ |
+| Python (local dev only) | 3.11+ |
+| Node.js (local dev only) | 20+ |
+
+### Environment Setup
 
 ```bash
-# Clone and enter
-git clone https://github.com/yourusername/network-vapt-lab.git
-cd network-vapt-lab
+# 1. Clone the repository
+git clone <repository-url>
+cd Network-VAPT-Internal-Lab
 
-# ── Backend ──────────────────────────────────
+# 2. Copy the environment template and set secrets
+cp .env.example .env
+```
+
+Edit `.env` and set at least the following (both are required by Docker Compose):
+
+| Variable | Description |
+|---|---|
+| `POSTGRES_PASSWORD` | PostgreSQL password (change from the default) |
+| `JWT_SECRET` | Secret used to sign access/refresh tokens (use a long random string) |
+
+```bash
+# 3. Build and start all services
+cd docker
+docker compose --env-file ..\.env up -d --build
+
+# 4. Verify
+docker ps --filter "name=vapt"
+curl http://localhost:8000/api/v1/health
+```
+
+---
+
+## Running with Docker
+
+```bash
+cd docker
+docker compose --env-file ..\.env up -d --build     # start
+docker compose --env-file ..\.env ps                # status
+docker compose --env-file ..\.env logs -f backend   # backend logs
+docker compose --env-file ..\.env down              # stop
+```
+
+### Containers
+
+| Container | Port | Purpose |
+|---|---|---|
+| `vapt-db` | 5432 (Docker network only) | PostgreSQL 16 database |
+| `vapt-backend` | 8000 | FastAPI backend (auto-bootstraps schema + admin) |
+| `vapt-frontend` | 5173 | React SPA production build served by `serve` |
+| `vapt-vulnapache` | — | Vulnerable Apache target for lab testing |
+| `vapt-ftp` | — | FTP service for lab testing |
+
+### Access Points
+
+| Service | URL |
+|---|---|
+| Frontend | `http://localhost:5173` |
+| Backend API | `http://localhost:8000` |
+| Swagger UI | `http://localhost:8000/docs` |
+| ReDoc | `http://localhost:8000/redoc` |
+| Health Check | `http://localhost:8000/api/v1/health` |
+
+---
+
+## Running Locally
+
+### Backend (Terminal 1)
+
+```bash
 cd backend
-
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-.venv\Scripts\Activate.ps1  # Windows
+.venv\Scripts\Activate.ps1   # Windows
+# source .venv/bin/activate  # Linux / macOS
 
-# Install core dependencies
 pip install -r requirements.txt
 
-# (Optional) Install security tool integrations (nmap, OpenVAS, PDF reports)
+# Optional integrations (nmap, OpenVAS, PDF reports)
 pip install -r requirements-security.txt
 
-# (Optional) Install dev/testing tools
+# Development / testing tools
 pip install -r requirements-dev.txt
 
-# Ensure PostgreSQL is running with database 'vapt_db'
-# Copy and edit .env
+# Ensure PostgreSQL is running with database 'vapt_db', then:
 cp ../.env.example .env
-
-# Run migrations
 alembic upgrade head
 
-# Start backend (Terminal 1)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-# ── Frontend ─────────────────────────────────
-cd ../frontend
+### Frontend (Terminal 2)
 
-# Install dependencies
+```bash
+cd frontend
 npm install
-
-# Start frontend (Terminal 2)
 npm run dev
 ```
 
-### First Login
+The Vite dev server proxies `/api` requests to `http://localhost:8000`.
+
+### Testing
+
+```bash
+# Backend (from backend/)
+pip install -r requirements-dev.txt
+pytest tests/ -v --asyncio-mode=auto      # 647 tests
+
+# Frontend
+cd frontend
+npm run build
+```
+
+---
+
+## Default Credentials & First Login
 
 On first startup the backend **automatically creates a default administrator** when the `users` table is empty (disable with `AUTO_CREATE_ADMIN=false`):
 
-Default credentials (`.env` overridable via `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD`):
 | Field | Value |
 |-------|-------|
 | Username | `admin` |
@@ -368,37 +333,18 @@ Default credentials (`.env` overridable via `ADMIN_USERNAME` / `ADMIN_EMAIL` / `
 | Password | `Admin@123` |
 | Role | `administrator` |
 
-Login at `http://localhost:5173` (frontend) or `http://localhost:8000/docs` (Swagger).
+Override via `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`.
 
-To (re)seed manually or create additional users, use the idempotent CLI script:
+> **Important:** Change the default password immediately in any non-isolated environment.
+
+To (re)seed the admin or create additional users idempotently:
 
 ```bash
 cd backend
-python -m scripts.create_admin
+python -m scripts.create_admin --username operator1 --password SecurePass@456
 ```
 
-### Creating Additional Users
-
-Once logged in as an administrator, create more users via the API:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/users \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "operator1",
-    "email": "operator1@networkvapt.local",
-    "password": "SecurePass@456",
-    "full_name": "Operator One",
-    "role": "viewer"
-  }'
-```
-
-Available roles:
-- **administrator** — full access (manage users, view audit logs, run assessments)
-- **viewer** — read-only access (view dashboards and reports)
-
-To get an admin token, login first:
+Get an admin token:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
@@ -406,86 +352,78 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -d '{"username": "admin", "password": "Admin@123"}'
 ```
 
-The script is also idempotent — re-running it is safe:
+### Roles
 
-```bash
-python -m scripts.create_admin --username operator2 --password OtherPass@789
-```
-
-### Docker Setup
-
-```bash
-docker-compose -f docker/docker-compose.yml up -d
-# Backend:  http://localhost:8000
-# Swagger:  http://localhost:8000/docs
-# Health:   http://localhost:8000/api/v1/health
-```
-
-### Testing
-
-```bash
-# Install dev dependencies first
-cd backend
-pip install -r requirements-dev.txt
-
-# Run backend tests
-pytest tests/ -v --asyncio-mode=auto
-
-# Frontend build check
-cd frontend
-npm run build
-```
-
-### Access Points
-
-| Service | URL |
-|---------|-----|
-| Frontend (dev) | `http://localhost:5173` |
-| Backend API | `http://localhost:8000` |
-| Swagger Docs | `http://localhost:8000/docs` |
-| Health Check | `http://localhost:8000/api/v1/health` |
+| Role | Permissions |
+|---|---|
+| `administrator` | Full access (9 permissions) |
+| `security_analyst` | Scan, view/export reports, view audit logs (5 permissions) |
+| `viewer` | Read-only (view dashboards and reports) |
 
 ---
 
 ## API Documentation
 
-Once the backend is running:
+Interactive API documentation is served by the backend while it is running:
+
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
+- **OpenAPI JSON:** `http://localhost:8000/openapi.json`
 - **Health Check:** `GET http://localhost:8000/api/v1/health`
+
+The OpenAPI schema covers **94 endpoints across 16 routers** (auth, users, assessments, hosts, ports, services, vulnerabilities, CVEs, exploits, captures, reports, dashboard, audits, settings, and health). Additional reference material lives in `docs/API_DOCUMENTATION.md` and `docs/API.md`.
 
 ---
 
-## Development Phases
+## Version 1.0 Features
 
-| # | Phase | Description | Status |
-|---|-------|-------------|--------|
-| 0 | Project Planning | Architecture, DB schema, API plan | ✅ Complete |
-| 1 | Virtual Lab Setup | Hypervisor, VMs, networking, validation | ✅ Complete |
-| 2 | Backend Foundation | FastAPI, SQLAlchemy, Alembic, config, logging, tests | ✅ Complete |
-| 3 | Frontend Foundation | React, TypeScript, Tailwind, routing, API client, 10 pages | ✅ Complete |
-| 4 | Assessment Engine Foundation | State machine, pipeline, runner, progress tracker, CRUD APIs | ✅ Complete |
-| 5 | Dashboard Development | Real API integration, live data, enhanced charts | ⏳ |
-| 6 | Assessment Workspace | Assessment configuration UI | ⏳ |
-| 7 | Host Discovery | Nmap integration, live host detection | ⏳ |
-| 8 | Port Scanner | TCP/UDP scanning, version/OS detection | ⏳ |
-| 9 | Service Enumeration | Banner grabbing, service identification | ⏳ |
-| 10 | Vulnerability Assessment | OpenVAS/Nessus integration, CVE parsing | ⏳ |
-| 11 | CVE Intelligence | CVSS, CWE, MITRE ATT&CK correlation | ⏳ |
-| 12 | Exploit Verification | Metasploit RPC, controlled exploitation | ⏳ |
-| 13 | Privilege Escalation | Local enumeration, exploit matching | ⏳ |
-| 14 | Lateral Movement | Pivoting, credential harvesting | ⏳ |
-| 15 | Packet Analysis | PCAP capture, protocol inspection | ⏳ |
-| 16 | Report Generation | HTML, PDF, Markdown report export | ⏳ |
-| 17 | Testing | Unit, integration, API, UI testing | ⏳ |
-| 18 | Documentation | User guide, installation guide, final docs | ⏳ |
-| 19 | GitHub Release | Version tag, release notes, final review | ⏳ |
+This release (`v1.0.0`) marks the **complete** Network VAPT Platform:
+
+- Full **6-stage assessment pipeline** with background execution, per-stage progress, and searchable assessment history.
+- **Real-time dashboard** with risk scoring, severity distribution, vulnerability trends, top ports/services/hosts, and an activity timeline.
+- **Host discovery** with OS fingerprinting and MAC/vendor enrichment.
+- **Port scanning** with Nmap profiles (quick / standard / deep / custom) and service/banner detection.
+- **Vulnerability assessment** via Nmap and OpenVAS with CVSS scoring.
+- **CVE intelligence** — NVD enrichment, EPSS scores, and KEV status.
+- **Exploit verification** via Metasploit RPC with session tracking.
+- **Packet analysis** — live capture, PCAP upload, protocol/conversation analysis, and automatic interface enumeration (name, IP, MAC, Up/Down status).
+- **Report generation** — Executive / Technical / Compliance in JSON, HTML, and PDF.
+- **Expanded global search** across reports, services, hosts, assessment history, and audit logs (server-side, case-insensitive, paginated).
+- **RBAC** — 3 roles, 9 permissions, permission-gated endpoints.
+- **Audit logging** — complete trail with CSV/JSON export.
+- **Docker Compose deployment** with lab target containers.
+- **647 automated backend tests** passing.
+
+---
+
+## Future Roadmap
+
+### v1.1
+
+- Scheduled & recurring scans with email digests
+- Vulnerability lifecycle (open / accepted / false-positive) with comments and assignees
+- Report scheduling and custom report template editor
+- Delta/comparison between assessments (new vs. fixed vulnerabilities)
+- SMTP notifications and MFA (TOTP)
+- MITRE ATT&CK technique mapping
+- Bulk CSV import/export of users and findings
+
+### v2.0
+
+- Multi-tenant / multi-organization support
+- Distributed scanning agents with a Redis/Celery task queue
+- Horizontal scaling and database read replicas
+- S3-compatible object storage for reports and captures
+- Public API tokens and webhooks
+- Compliance report templates (NIST CSF, ISO 27001, PCI-DSS, SOC 2)
+- WebSocket-driven real-time telemetry
+- Third-party threat-intelligence feeds and threat-hunting queries
 
 ---
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
 
 ## Ethical Use
 

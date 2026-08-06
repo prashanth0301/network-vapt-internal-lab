@@ -6,11 +6,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from loguru import logger
-from sqlalchemy import or_, select
+from sqlalchemy import cast, func, literal, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.models.report import Report
+from app.models.scan import Scan
 from app.schemas.common import SuccessResponse
 from app.services.report_service import (
     REPORT_TYPE_LABELS,
@@ -21,7 +23,11 @@ from app.services.report_service import (
     _format_size,
 )
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(
+    prefix="/reports",
+    tags=["Reports"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _report_to_dict(r: Report) -> dict:
@@ -58,7 +64,28 @@ async def list_reports(
     if report_type:
         query = query.where(Report.report_type == report_type.capitalize())
     if search:
-        query = query.where(Report.title.ilike(f"%{search.strip()}%"))
+        term = f"%{search.strip()}%"
+        query = query.join(Scan, Report.scan_id == Scan.id, isouter=True)
+        query = query.where(or_(
+            Report.title.ilike(term),
+            func.substring(Report.filepath, r"([^/\\]+)$").ilike(term),
+            Report.report_type.ilike(term),
+            Report.format.ilike(term),
+            cast(Report.scan_id, String).ilike(term),
+            Scan.name.ilike(term),
+            Scan.target.ilike(term),
+            Scan.status.ilike(term),
+            literal("ready").ilike(term),
+            Report.generated_by.ilike(term),
+            cast(Report.created_at, String).ilike(term),
+            func.to_char(Report.created_at, "Month").ilike(term),
+            func.to_char(Report.created_at, "YYYY").ilike(term),
+            cast(Report.updated_at, String).ilike(term),
+            func.to_char(Report.updated_at, "Month").ilike(term),
+            func.to_char(Report.updated_at, "YYYY").ilike(term),
+            cast(Report.file_size, String).ilike(term),
+            Scan.scan_type.ilike(term),
+        ))
     order_col = getattr(Report, sort_by, Report.created_at)
     if sort_order == "desc":
         order_col = order_col.desc()
@@ -167,7 +194,7 @@ async def generate_report(
     report_title = f"{label} Report - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
 
     from app.core.config import settings
-    reports_dir = settings.BASE_DIR / ".." / "reports"
+    reports_dir = settings.REPORTS_DIR
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_id = str(uuid.uuid4())
     fallback_note = None

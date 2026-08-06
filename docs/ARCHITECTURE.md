@@ -92,7 +92,7 @@ backend/
 │       ├── cve_provider/          # NVD integration
 │       ├── assessment/            # Pipeline engine, stage handlers
 │       └── *.py                   # 23 domain service modules
-├── tests/                         # 23 test files (643 tests)
+├── tests/                         # 23 test files (647 tests)
 ├── alembic/                       # Database migrations
 ├── requirements.txt               # 16 direct dependencies
 └── pyproject.toml                 # Build config, ruff, pytest
@@ -378,6 +378,11 @@ async def list_users(
     ...
 ```
 
+In addition to per-route permission checks, every router except `health` and the
+auth endpoints enforces authentication at the router level via
+`dependencies=[Depends(get_current_user)]`, so unauthenticated requests are
+rejected with 401 before reaching any handler.
+
 ### Audit Logging
 
 Every significant action is recorded in the `audit_logs` table:
@@ -503,7 +508,7 @@ Browser → :5173 (frontend container)
 
 ## Testing Strategy
 
-### Backend Tests (643 tests)
+### Backend Tests (647 tests)
 
 | Test File | Coverage |
 |---|---|

@@ -24,6 +24,7 @@ from app.services.user_management_service import (
     create_user,
     delete_user,
     find_duplicate,
+    is_last_active_admin,
     list_users,
     reset_user_password,
     update_user_profile,
@@ -281,6 +282,16 @@ async def set_user_role(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if (
+        str(user.id) == str(current_user.id)
+        and request.role != "administrator"
+        and not await is_last_active_admin(db, user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role to a lower privilege level",
+        )
 
     try:
         updated, [old_role, new_role] = await change_user_role(db, user, request.role)

@@ -3,8 +3,8 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_list_hosts_endpoint(client: AsyncClient):
-    response = await client.get("/api/v1/hosts")
+async def test_list_hosts_endpoint(client: AsyncClient, auth_headers: dict):
+    response = await client.get("/api/v1/hosts", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -12,8 +12,8 @@ async def test_list_hosts_endpoint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_hosts_summary_endpoint(client: AsyncClient):
-    response = await client.get("/api/v1/hosts/summary")
+async def test_hosts_summary_endpoint(client: AsyncClient, auth_headers: dict):
+    response = await client.get("/api/v1/hosts/summary", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -22,13 +22,14 @@ async def test_hosts_summary_endpoint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_discovery_assessment(client: AsyncClient):
+async def test_create_discovery_assessment(client: AsyncClient, auth_headers: dict):
     response = await client.post(
         "/api/v1/hosts/discover",
         json={
             "target": "192.168.56.0/24",
             "scan_type": "ping_sweep",
         },
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -37,12 +38,18 @@ async def test_create_discovery_assessment(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_nonexistent_host(client: AsyncClient):
-    response = await client.get("/api/v1/hosts/nonexistent-id")
+async def test_get_nonexistent_host(client: AsyncClient, auth_headers: dict):
+    response = await client.get("/api/v1/hosts/nonexistent-id", headers=auth_headers)
     assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_delete_nonexistent_host(client: AsyncClient):
-    response = await client.delete("/api/v1/hosts/nonexistent-id")
+async def test_delete_nonexistent_host(client: AsyncClient, auth_headers: dict):
+    response = await client.delete("/api/v1/hosts/nonexistent-id", headers=auth_headers)
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_hosts_require_authentication(client: AsyncClient):
+    response = await client.get("/api/v1/hosts")
+    assert response.status_code == 401

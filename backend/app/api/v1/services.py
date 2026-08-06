@@ -1,11 +1,12 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.service_intelligence import ServiceEnrichRequest, ServiceIntelligenceResponse
 from app.services.assessment import assessment_manager
@@ -18,7 +19,11 @@ from app.services.service_intelligence_service import (
     get_services_by_host,
 )
 
-router = APIRouter(prefix="/services", tags=["Services"])
+router = APIRouter(
+    prefix="/services",
+    tags=["Services"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=PaginatedResponse[ServiceIntelligenceResponse])
@@ -88,7 +93,7 @@ async def get_service(
 ):
     service = await get_service_by_id(db, service_id)
     if not service:
-        return SuccessResponse(data=None, message=f"Service '{service_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Service '{service_id}' not found")
     return SuccessResponse(data=_service_to_response(service), message="Service retrieved")
 
 

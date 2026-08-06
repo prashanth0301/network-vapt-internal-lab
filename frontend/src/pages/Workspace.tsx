@@ -118,7 +118,7 @@ export function Workspace() {
       });
       const id = createRes.data.id;
       setAssessmentId(id);
-      setActiveAssessment(id, createRes.data.name);
+      setActiveAssessment(id, createRes.data.name, 'draft');
       setStatusMessage('Starting assessment...');
       await startAssessment(id);
       setStatus('running');

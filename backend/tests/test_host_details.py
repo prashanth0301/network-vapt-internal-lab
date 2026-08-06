@@ -113,7 +113,7 @@ async def _cleanup(db: AsyncSession, host: Host, scan_ids: list[uuid.UUID]) -> N
 
 @pytest.mark.asyncio
 async def test_host_details_endpoint_shape(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     scan = Scan(name="Full Scan A", scan_type="full_assessment", target="10.30.0.0/24",
                 status="completed",
@@ -129,7 +129,9 @@ async def test_host_details_endpoint_shape(
     await db_session.commit()
 
     try:
-        response = await client.get(f"/api/v1/hosts/{host.id}/details")
+        response = await client.get(
+            f"/api/v1/hosts/{host.id}/details", headers=auth_headers
+        )
         assert response.status_code == 200
         data = response.json()["data"]
 
@@ -197,19 +199,33 @@ async def test_host_details_endpoint_shape(
 
 
 @pytest.mark.asyncio
-async def test_host_details_missing_host_404(client: AsyncClient):
-    response = await client.get(f"/api/v1/hosts/{uuid.uuid4()}/details")
+async def test_host_details_missing_host_404(
+    client: AsyncClient, auth_headers: dict
+):
+    response = await client.get(
+        f"/api/v1/hosts/{uuid.uuid4()}/details", headers=auth_headers
+    )
     assert response.status_code == 404
-    response = await client.get("/api/v1/hosts/not-a-uuid/details")
+    response = await client.get("/api/v1/hosts/not-a-uuid/details", headers=auth_headers)
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_host_details_empty_data(client: AsyncClient, db_session: AsyncSession):
+async def test_host_details_requires_authentication(client: AsyncClient):
+    response = await client.get(f"/api/v1/hosts/{uuid.uuid4()}/details")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_host_details_empty_data(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
     host = await _seed_host(db_session, ip="10.30.0.99")
     await db_session.commit()
     try:
-        response = await client.get(f"/api/v1/hosts/{host.id}/details")
+        response = await client.get(
+            f"/api/v1/hosts/{host.id}/details", headers=auth_headers
+        )
         assert response.status_code == 200
         data = response.json()["data"]
         for key in ("open_ports", "services", "banners", "vulnerabilities",
@@ -224,7 +240,7 @@ async def test_host_details_empty_data(client: AsyncClient, db_session: AsyncSes
 
 @pytest.mark.asyncio
 async def test_scan_history_and_reports_span_assessments(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     scan_a = Scan(name="Scan A", scan_type="host_discovery", target="10.30.0.0/24",
                   status="completed")
@@ -241,7 +257,9 @@ async def test_scan_history_and_reports_span_assessments(
     await db_session.commit()
 
     try:
-        response = await client.get(f"/api/v1/hosts/{host_a.id}/details")
+        response = await client.get(
+            f"/api/v1/hosts/{host_a.id}/details", headers=auth_headers
+        )
         assert response.status_code == 200
         data = response.json()["data"]
         scan_names = {s["name"] for s in data["scan_history"]}

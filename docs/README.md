@@ -76,7 +76,7 @@ Network-VAPT-Internal-Lab/
 │   │   ├── models/            # 17 SQLAlchemy models
 │   │   ├── schemas/           # Pydantic request/response schemas
 │   │   └── services/          # 23+ service modules + scanner/exploit providers
-│   ├── tests/                 # 23 test files (643 tests)
+│   ├── tests/                 # 23 test files (647 tests)
 │   └── requirements.txt
 ├── frontend/                   # React SPA
 │   ├── src/

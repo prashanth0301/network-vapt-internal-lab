@@ -107,18 +107,22 @@ async def _seed_findings(db: AsyncSession, scan_id: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_search_matches_name_and_target(client: AsyncClient):
+async def test_list_search_matches_name_and_target(client: AsyncClient, auth_headers: dict):
     a = _create(name="Alpha Web Scan", target="192.168.1.10")
     b = _create(name="Beta DB Audit", target="192.168.1.20")
     try:
-        response = await client.get("/api/v1/assessments", params={"search": "alpha"})
+        response = await client.get(
+            "/api/v1/assessments", params={"search": "alpha"}, headers=auth_headers
+        )
         assert response.status_code == 200
         names = [item["name"] for item in response.json()["data"]]
         assert a.name in names
         assert b.name not in names
 
         response = await client.get(
-            "/api/v1/assessments", params={"search": "192.168.1.20"}
+            "/api/v1/assessments",
+            params={"search": "192.168.1.20"},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         names = [item["name"] for item in response.json()["data"]]
@@ -130,11 +134,13 @@ async def test_list_search_matches_name_and_target(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_target_filter(client: AsyncClient):
+async def test_list_target_filter(client: AsyncClient, auth_headers: dict):
     a = _create(name="Target Filter A", target="10.1.1.1")
     b = _create(name="Target Filter B", target="10.2.2.2")
     try:
-        response = await client.get("/api/v1/assessments", params={"target": "10.1.1"})
+        response = await client.get(
+            "/api/v1/assessments", params={"target": "10.1.1"}, headers=auth_headers
+        )
         assert response.status_code == 200
         items = response.json()["data"]
         assert all(item["name"] == a.name for item in items if item["target"] == "10.1.1.1")
@@ -147,19 +153,23 @@ async def test_list_target_filter(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_status_filter(client: AsyncClient):
+async def test_list_status_filter(client: AsyncClient, auth_headers: dict):
     a = _create(name="Status Running One")
     b = _create(name="Status Completed One")
     assessment_manager.update_assessment_status(a.id, AssessmentStatus.PENDING)
     assessment_manager.update_assessment_status(a.id, AssessmentStatus.RUNNING)
     await _complete(b)
     try:
-        response = await client.get("/api/v1/assessments", params={"status": "running"})
+        response = await client.get(
+            "/api/v1/assessments", params={"status": "running"}, headers=auth_headers
+        )
         items = response.json()["data"]
         assert any(item["id"] == a.id for item in items)
         assert not any(item["id"] == b.id for item in items)
 
-        response = await client.get("/api/v1/assessments", params={"status": "completed"})
+        response = await client.get(
+            "/api/v1/assessments", params={"status": "completed"}, headers=auth_headers
+        )
         items = response.json()["data"]
         assert any(item["id"] == b.id for item in items)
         assert not any(item["id"] == a.id for item in items)
@@ -169,7 +179,7 @@ async def test_list_status_filter(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_date_filters(client: AsyncClient):
+async def test_list_date_filters(client: AsyncClient, auth_headers: dict):
     a = _create(name="Date Filter Today")
     today = datetime.now(timezone.utc)
     yesterday = today - timedelta(days=1)
@@ -180,6 +190,7 @@ async def test_list_date_filters(client: AsyncClient):
                 "date_from": yesterday.strftime("%Y-%m-%d"),
                 "date_to": today.strftime("%Y-%m-%d"),
             },
+            headers=auth_headers,
         )
         assert any(item["id"] == a.id for item in response.json()["data"])
 
@@ -189,6 +200,7 @@ async def test_list_date_filters(client: AsyncClient):
                 "date_from": "2000-01-01",
                 "date_to": yesterday.strftime("%Y-%m-%d"),
             },
+            headers=auth_headers,
         )
         assert not any(item["id"] == a.id for item in response.json()["data"])
     finally:
@@ -197,13 +209,17 @@ async def test_list_date_filters(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_includes_severity_duration_and_progress(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     a = _create(name="Summary Fields Check", target="10.9.9.9")
     await _complete(a)
     await _seed_findings(db_session, a.id)
     try:
-        response = await client.get("/api/v1/assessments", params={"search": "Summary Fields"})
+        response = await client.get(
+            "/api/v1/assessments",
+            params={"search": "Summary Fields"},
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         items = response.json()["data"]
         item = next(i for i in items if i["id"] == a.id)
@@ -212,17 +228,21 @@ async def test_list_includes_severity_duration_and_progress(
         assert item["duration_seconds"] == 120
         assert item["progress_percent"] == 100.0
     finally:
-        response = await client.delete(f"/api/v1/assessments/{a.id}")
+        response = await client.delete(
+            f"/api/v1/assessments/{a.id}", headers=auth_headers
+        )
         assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_clone_assessment(client: AsyncClient):
+async def test_clone_assessment(client: AsyncClient, auth_headers: dict):
     a = _create(name="Clone Me", target="10.5.5.5", scan_type="vuln_scan")
     a.parameters = {"ports": "80,443"}
     clone_id = None
     try:
-        response = await client.post(f"/api/v1/assessments/{a.id}/clone")
+        response = await client.post(
+            f"/api/v1/assessments/{a.id}/clone", headers=auth_headers
+        )
         assert response.status_code == 201
         data = response.json()["data"]
         clone_id = data["id"]
@@ -240,20 +260,24 @@ async def test_clone_assessment(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_clone_missing_assessment_404(client: AsyncClient):
-    response = await client.post(f"/api/v1/assessments/{uuid.uuid4()}/clone")
+async def test_clone_missing_assessment_404(client: AsyncClient, auth_headers: dict):
+    response = await client.post(
+        f"/api/v1/assessments/{uuid.uuid4()}/clone", headers=auth_headers
+    )
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_assessment_summary_endpoint(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
 ):
     a = _create(name="Summary Endpoint", target="10.7.7.7", scan_type="full_assessment")
     await _complete(a)
     await _seed_findings(db_session, a.id)
     try:
-        response = await client.get(f"/api/v1/assessments/{a.id}/summary")
+        response = await client.get(
+            f"/api/v1/assessments/{a.id}/summary", headers=auth_headers
+        )
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["id"] == a.id
@@ -268,19 +292,23 @@ async def test_assessment_summary_endpoint(
         assert data["duration_seconds"] == 120
         assert data["progress_percent"] == 100.0
     finally:
-        response = await client.delete(f"/api/v1/assessments/{a.id}")
+        response = await client.delete(
+            f"/api/v1/assessments/{a.id}", headers=auth_headers
+        )
         assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_assessment_summary_missing_404(client: AsyncClient):
-    response = await client.get(f"/api/v1/assessments/{uuid.uuid4()}/summary")
+async def test_assessment_summary_missing_404(client: AsyncClient, auth_headers: dict):
+    response = await client.get(
+        f"/api/v1/assessments/{uuid.uuid4()}/summary", headers=auth_headers
+    )
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_delete_assessment_cascade(
-    client: AsyncClient, db_session: AsyncSession, tmp_path
+    client: AsyncClient, db_session: AsyncSession, tmp_path, auth_headers: dict
 ):
     a = _create(name="Cascade Delete", target="10.8.8.8")
     await _complete(a)
@@ -319,7 +347,9 @@ async def test_delete_assessment_cascade(
         stage_dir.mkdir(parents=True, exist_ok=True)
         (stage_dir / "output.xml").write_text("<scan/>", encoding="utf-8")
 
-        response = await client.delete(f"/api/v1/assessments/{a.id}")
+        response = await client.delete(
+            f"/api/v1/assessments/{a.id}", headers=auth_headers
+        )
         assert response.status_code == 200
         deleted = response.json()["data"]["deleted"]
         assert deleted["reports"] == 1
@@ -351,27 +381,33 @@ async def test_delete_assessment_cascade(
         with pytest.raises(AssessmentNotFoundError):
             assessment_manager.get_assessment(a.id)
 
-        response = await client.get("/api/v1/assessments", params={"search": "Cascade Delete"})
+        response = await client.get(
+            "/api/v1/assessments",
+            params={"search": "Cascade Delete"},
+            headers=auth_headers,
+        )
         assert not any(item["id"] == a.id for item in response.json()["data"])
     finally:
         artifact_manager._base_dir = original_base_dir
 
 
 @pytest.mark.asyncio
-async def test_delete_assessment_missing_404(client: AsyncClient):
-    response = await client.delete(f"/api/v1/assessments/{uuid.uuid4()}")
+async def test_delete_assessment_missing_404(client: AsyncClient, auth_headers: dict):
+    response = await client.delete(
+        f"/api/v1/assessments/{uuid.uuid4()}", headers=auth_headers
+    )
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_delete_assessment_invalid_uuid_404(client: AsyncClient):
-    response = await client.delete("/api/v1/assessments/not-a-uuid")
+async def test_delete_assessment_invalid_uuid_404(client: AsyncClient, auth_headers: dict):
+    response = await client.delete("/api/v1/assessments/not-a-uuid", headers=auth_headers)
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_history_cleanup_assessment_deletes_reports(
-    client: AsyncClient, db_session: AsyncSession, tmp_path
+    client: AsyncClient, db_session: AsyncSession, tmp_path, auth_headers: dict
 ):
     a = _create(name="History Cleanup Cascade", target="10.11.11.11")
     report_file = tmp_path / "h.json"
@@ -391,6 +427,7 @@ async def test_history_cleanup_assessment_deletes_reports(
         response = await client.delete(
             "/api/v1/history/cleanup",
             params={"preset": "all", "assessment_id": a.id},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         assert not report_file.exists()
@@ -408,12 +445,138 @@ async def test_history_cleanup_assessment_deletes_reports(
 
 
 @pytest.mark.asyncio
-async def test_persisted_assessment_is_listed(client: AsyncClient):
+async def test_history_cleanup_custom_range_deletes_findings(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    scan = Scan(
+        id=uuid.uuid4(),
+        name="Custom Range Cleanup",
+        scan_type="port_scan",
+        target="10.9.9.9",
+        status="completed",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
+    db_session.add(scan)
+    await db_session.flush()
+    await _seed_findings(db_session, str(scan.id))
+
+    from_date = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    to_date = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    try:
+        response = await client.delete(
+            "/api/v1/history/cleanup",
+            params={"preset": "custom", "from_date": from_date, "to_date": to_date},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["hosts_deleted"] == 1
+        assert data["exploits_deleted"] == 1
+
+        host_rows = (
+            await db_session.execute(
+                Host.__table__.select().where(Host.scan_id == scan.id)
+            )
+        ).fetchall()
+        assert len(host_rows) == 0
+    finally:
+        assessment_manager.delete_assessment(str(scan.id))
+
+
+@pytest.mark.asyncio
+async def test_history_cleanup_last_7d_deletes_findings(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    scan = Scan(
+        id=uuid.uuid4(),
+        name="7d Cleanup",
+        scan_type="port_scan",
+        target="10.10.10.10",
+        status="completed",
+        created_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    db_session.add(scan)
+    await db_session.flush()
+    await _seed_findings(db_session, str(scan.id))
+    try:
+        response = await client.delete(
+            "/api/v1/history/cleanup",
+            params={"preset": "last_7d"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["hosts_deleted"] == 1
+        host_rows = (
+            await db_session.execute(
+                Host.__table__.select().where(Host.scan_id == scan.id)
+            )
+        ).fetchall()
+        assert len(host_rows) == 0
+    finally:
+        assessment_manager.delete_assessment(str(scan.id))
+
+
+@pytest.mark.asyncio
+async def test_history_cleanup_custom_requires_dates_400(
+    client: AsyncClient, auth_headers: dict
+):
+    response = await client.delete(
+        "/api/v1/history/cleanup",
+        params={"preset": "custom"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_history_cleanup_unknown_preset_400(
+    client: AsyncClient, auth_headers: dict
+):
+    response = await client.delete(
+        "/api/v1/history/cleanup",
+        params={"preset": "bogus_preset"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_history_cleanup_malformed_custom_date_400(
+    client: AsyncClient, auth_headers: dict
+):
+    response = await client.delete(
+        "/api/v1/history/cleanup",
+        params={
+            "preset": "custom",
+            "from_date": "not-a-date",
+            "to_date": "2026-08-04T00:00:00Z",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_history_cleanup_missing_assessment_404(
+    client: AsyncClient, auth_headers: dict
+):
+    response = await client.delete(
+        "/api/v1/history/cleanup",
+        params={"preset": "all", "assessment_id": str(uuid.uuid4())},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_persisted_assessment_is_listed(client: AsyncClient, auth_headers: dict):
     record = _create(name="Persisted List Check", target="10.12.12.12")
     await assessment_manager.persist_assessment(record.id)
     try:
         response = await client.get(
-            "/api/v1/assessments", params={"search": "Persisted List Check"}
+            "/api/v1/assessments",
+            params={"search": "Persisted List Check"},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         assert any(

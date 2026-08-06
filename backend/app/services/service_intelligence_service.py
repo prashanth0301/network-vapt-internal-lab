@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select, update
+from sqlalchemy import cast, or_, select, String, update
+from sqlalchemy.sql.functions import concat
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -840,20 +841,35 @@ async def get_all_services(
         query = query.where(Service.confidence >= confidence_min)
         count_query = count_query.where(Service.confidence >= confidence_min)
     if search:
-        query = query.where(
-            Service.name.ilike(f"%{search}%")
-            | Service.product.ilike(f"%{search}%")
-            | Service.normalized_name.ilike(f"%{search}%")
-            | Service.normalized_product.ilike(f"%{search}%")
-            | Service.version.ilike(f"%{search}%")
+        if not assessment_id:
+            query = query.join(Port, Service.port_id == Port.id).join(Host, Port.host_id == Host.id)
+            count_query = (
+                count_query.join(Port, Service.port_id == Port.id)
+                .join(Host, Port.host_id == Host.id)
+            )
+        term = f"%{search.strip()}%"
+        search_filter = or_(
+            Service.name.ilike(term),
+            Service.product.ilike(term),
+            Service.version.ilike(term),
+            Service.normalized_name.ilike(term),
+            Service.normalized_product.ilike(term),
+            Service.normalized_version.ilike(term),
+            Service.banner.ilike(term),
+            Service.extra_info.ilike(term),
+            Service.protocol.ilike(term),
+            cast(Port.port, String).ilike(term),
+            concat(Port.port, "/", Port.protocol).ilike(term),
+            cast(Host.ip_address, String).ilike(term),
+            Host.hostname.ilike(term),
+            Host.os_name.ilike(term),
+            Host.os_version.ilike(term),
+            Host.vendor.ilike(term),
+            Port.state.ilike(term),
+            Port.protocol.ilike(term),
         )
-        count_query = count_query.where(
-            Service.name.ilike(f"%{search}%")
-            | Service.product.ilike(f"%{search}%")
-            | Service.normalized_name.ilike(f"%{search}%")
-            | Service.normalized_product.ilike(f"%{search}%")
-            | Service.version.ilike(f"%{search}%")
-        )
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
 
     total_result = await session.execute(count_query)
     total = len(total_result.fetchall())

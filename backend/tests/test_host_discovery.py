@@ -1,6 +1,15 @@
+import ipaddress
+
 import pytest
 
-from app.services.nmap_service import NmapHostResult, NmapPortResult, build_command, parse_nmap_output
+from app.services.nmap_service import (
+    NmapHostResult,
+    NmapPortResult,
+    _is_local_target,
+    build_command,
+    parse_nmap_output,
+)
+from app.services.host_discovery_service import _is_invalid_discovery_address
 
 
 SAMPLE_NMAP_XML = """<?xml version="1.0"?>
@@ -122,7 +131,10 @@ class TestNmapXmlParsing:
 
 
 class TestNmapCommandBuilder:
-    def test_ping_sweep_command(self):
+    def test_ping_sweep_command(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks", lambda: []
+        )
         cmd = build_command("ping_sweep", "192.168.56.0/24")
         assert "nmap" in cmd[0]
         assert "-sn" in cmd
@@ -130,8 +142,54 @@ class TestNmapCommandBuilder:
         assert "--host-timeout" in cmd
         assert "--max-retries" in cmd
         assert "--max-rtt-timeout" in cmd
-        assert "-PS21,22,25,80,135,139,443,445,3389" in cmd
+        assert "-PE" in cmd
+        assert "-PR" not in cmd
         assert "192.168.56.0/24" in cmd
+
+    def test_ping_sweep_local_subnet_uses_arp(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks",
+            lambda: [ipaddress.ip_network("192.168.56.0/24")],
+        )
+        cmd = build_command("ping_sweep", "192.168.56.0/24")
+        assert "-PR" in cmd
+        assert "-PE" not in cmd
+
+    def test_ping_sweep_remote_subnet_uses_icmp(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks",
+            lambda: [ipaddress.ip_network("192.168.56.0/24")],
+        )
+        cmd = build_command("ping_sweep", "10.0.0.0/24")
+        assert "-PE" in cmd
+        assert "-PR" not in cmd
+
+    def test_ping_sweep_remote_subnet_adds_tcp_probe(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks",
+            lambda: [ipaddress.ip_network("192.168.56.0/24")],
+        )
+        cmd = build_command("ping_sweep", "10.0.0.0/24")
+        assert "-PS80,443" in cmd
+
+    def test_ping_sweep_local_subnet_does_not_add_tcp_probe(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks",
+            lambda: [ipaddress.ip_network("192.168.56.0/24")],
+        )
+        cmd = build_command("ping_sweep", "192.168.56.0/24")
+        assert "-PR" in cmd
+        assert "-PE" not in cmd
+        assert "-PS80,443" not in cmd
+
+    def test_ping_sweep_local_single_host_uses_arp(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.nmap_service._get_local_networks",
+            lambda: [ipaddress.ip_network("192.168.56.0/24")],
+        )
+        cmd = build_command("ping_sweep", "192.168.56.20")
+        assert "-PR" in cmd
+        assert "-PE" not in cmd
 
     def test_arp_scan_command(self):
         cmd = build_command("arp_scan", "192.168.56.0/24")
@@ -178,6 +236,63 @@ class TestNmapCommandBuilder:
         cmd = build_command("udp_scan", "192.168.56.20")
         assert "-sU" in cmd
         assert "-Pn" not in cmd
+
+
+class TestLocalTargetDetection:
+    LOCAL = [ipaddress.ip_network("192.168.56.0/24")]
+
+    def test_cidr_in_local_subnet(self):
+        assert _is_local_target("192.168.56.0/24", self.LOCAL) is True
+
+    def test_single_ip_in_local_subnet(self):
+        assert _is_local_target("192.168.56.20", self.LOCAL) is True
+
+    def test_remote_private_subnet(self):
+        assert _is_local_target("10.0.0.0/24", self.LOCAL) is False
+
+    def test_remote_172_subnet(self):
+        assert _is_local_target("172.16.5.0/24", self.LOCAL) is False
+
+    def test_public_ip(self):
+        assert _is_local_target("8.8.8.8", self.LOCAL) is False
+
+    def test_range_start_in_local_subnet(self):
+        assert _is_local_target("192.168.56.10-30", self.LOCAL) is True
+
+    def test_range_start_remote(self):
+        assert _is_local_target("10.0.0.10-30", self.LOCAL) is False
+
+    def test_no_local_networks_returns_false(self):
+        assert _is_local_target("192.168.56.0/24", []) is False
+
+    def test_hostname_resolves_to_local_subnet(self):
+        assert _is_local_target("192.168.56.100", self.LOCAL) is True
+
+    def test_unresolvable_hostname_returns_false(self):
+        assert _is_local_target("no-such-host.invalid", self.LOCAL) is False
+
+
+class TestInvalidDiscoveryAddress:
+    def test_broadcast_of_target_network(self):
+        assert _is_invalid_discovery_address("192.168.0.255", "192.168.0.0/24") is True
+
+    def test_network_address_of_target_network(self):
+        assert _is_invalid_discovery_address("192.168.0.0", "192.168.0.0/24") is True
+
+    def test_unicast_host_is_valid(self):
+        assert _is_invalid_discovery_address("192.168.0.103", "192.168.0.0/24") is False
+
+    def test_multicast_is_invalid(self):
+        assert _is_invalid_discovery_address("224.0.0.22", "192.168.0.0/24") is True
+
+    def test_limited_broadcast_is_invalid(self):
+        assert _is_invalid_discovery_address("255.255.255.255", "192.168.0.0/24") is True
+
+    def test_single_ip_target_keeps_host(self):
+        assert _is_invalid_discovery_address("192.168.0.103", "192.168.0.103") is False
+
+    def test_non_cidr_target_keeps_broadcast(self):
+        assert _is_invalid_discovery_address("192.168.0.255", "192.168.0.255") is False
 
 
 class TestNmapHostResult:

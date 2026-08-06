@@ -6,8 +6,8 @@ from app.services.assessment.lifecycle import AssessmentStatus
 
 
 @pytest.mark.asyncio
-async def test_assessment_statistics_endpoint(client: AsyncClient):
-    response = await client.get("/api/v1/assessments/statistics")
+async def test_assessment_statistics_endpoint(client: AsyncClient, auth_headers: dict):
+    response = await client.get("/api/v1/assessments/statistics", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -19,7 +19,9 @@ async def test_assessment_statistics_endpoint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_assessment_statistics_reflects_status_counts(client: AsyncClient):
+async def test_assessment_statistics_reflects_status_counts(
+    client: AsyncClient, auth_headers: dict
+):
     record = assessment_manager.create_assessment(
         name="stats-check",
         scan_type="port_scan",
@@ -28,7 +30,7 @@ async def test_assessment_statistics_reflects_status_counts(client: AsyncClient)
     assessment_manager.update_assessment_status(record.id, AssessmentStatus.PENDING)
     assessment_manager.update_assessment_status(record.id, AssessmentStatus.RUNNING)
 
-    response = await client.get("/api/v1/assessments/statistics")
+    response = await client.get("/api/v1/assessments/statistics", headers=auth_headers)
     assert response.status_code == 200
     stats = response.json()["data"]
     assert stats["total"] >= 1
@@ -36,3 +38,9 @@ async def test_assessment_statistics_reflects_status_counts(client: AsyncClient)
     assert stats["active_count"] >= 1
 
     assessment_manager.delete_assessment(record.id)
+
+
+@pytest.mark.asyncio
+async def test_assessment_statistics_requires_authentication(client: AsyncClient):
+    response = await client.get("/api/v1/assessments/statistics")
+    assert response.status_code == 401

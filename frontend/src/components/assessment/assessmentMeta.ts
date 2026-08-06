@@ -40,6 +40,7 @@ export function statusColor(status: string): 'success' | 'warning' | 'danger' | 
     case 'running': return 'info';
     case 'cancelled': return 'warning';
     case 'pending': return 'warning';
+    case 'draft': return 'info';
     default: return 'default';
   }
 }

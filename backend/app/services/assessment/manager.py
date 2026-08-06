@@ -4,10 +4,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, cast, func, or_, select, String
 
 from app.core.database import async_session_factory
+from app.models.exploit import Exploit
+from app.models.host import Host
+from app.models.port import Port
+from app.models.report import Report
 from app.models.scan import Scan
+from app.models.service import Service
+from app.models.vulnerability import Vulnerability
 from app.services.assessment.exceptions import (
     AssessmentAlreadyRunningError,
     AssessmentInvalidTransitionError,
@@ -215,6 +221,25 @@ class AssessmentManager:
             raise AssessmentNotFoundError(assessment_id)
         return record
 
+    def _hydrate_from_dict(self, data: dict) -> AssessmentRecord:
+        record = AssessmentRecord(
+            assessment_id=data["id"],
+            name=data["name"],
+            scan_type=data["scan_type"],
+            target=data["target"],
+            parameters=data.get("parameters") or {},
+        )
+        try:
+            record.status = AssessmentStatus(data["status"])
+        except (ValueError, KeyError):
+            record.status = AssessmentStatus.FAILED
+        record.created_at = datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(timezone.utc)
+        record.updated_at = datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else record.created_at
+        record.started_at = datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None
+        record.completed_at = datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None
+        record.error_message = data.get("error_message")
+        return record
+
     def list_assessments(
         self,
         status: Optional[str] = None,
@@ -339,6 +364,7 @@ class AssessmentManager:
         per_page: int = 20,
     ) -> tuple[list[AssessmentRecord], int]:
         results = list(self._assessments.values())
+        db_loaded_ids: set[str] = set()
         try:
             async with async_session_factory() as session:
                 query = select(Scan).order_by(Scan.created_at.desc())
@@ -347,10 +373,93 @@ class AssessmentManager:
                 if scan_type:
                     query = query.where(Scan.scan_type == scan_type)
                 if search:
-                    pattern = f"%{search.strip()}%"
-                    query = query.where(
-                        or_(Scan.name.ilike(pattern), Scan.target.ilike(pattern))
+                    term = search.strip()
+                    pattern = f"%{term}%"
+                    hosts_count = (
+                        select(func.count(Host.id))
+                        .where(Host.scan_id == Scan.id)
+                        .scalar_subquery()
                     )
+                    ports_count = (
+                        select(func.count(Port.id))
+                        .join(Host, Port.host_id == Host.id)
+                        .where(Host.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    services_count = (
+                        select(func.count(Service.id))
+                        .join(Port, Service.port_id == Port.id)
+                        .join(Host, Port.host_id == Host.id)
+                        .where(Host.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    vulnerabilities_count = (
+                        select(func.count(Vulnerability.id))
+                        .where(Vulnerability.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    cves_count = (
+                        select(func.coalesce(func.sum(Vulnerability.cve_count), 0))
+                        .where(Vulnerability.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    exploits_count = (
+                        select(func.count(Exploit.id))
+                        .join(Host, Exploit.host_id == Host.id)
+                        .where(Host.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    reports_count = (
+                        select(func.count(Report.id))
+                        .where(Report.scan_id == Scan.id)
+                        .scalar_subquery()
+                    )
+                    host_hostname = (
+                        select(Host.hostname)
+                        .where(Host.scan_id == Scan.id, Host.hostname.isnot(None))
+                        .limit(1)
+                        .scalar_subquery()
+                    )
+                    progress_expr = case(
+                        (Scan.status == "completed", "100"),
+                        else_="0",
+                    )
+                    duration_seconds = func.coalesce(
+                        func.extract(
+                            "epoch",
+                            func.coalesce(Scan.completed_at, Scan.started_at)
+                            - Scan.started_at,
+                        ),
+                        0,
+                    )
+                    search_conditions = [
+                        Scan.name.ilike(pattern),
+                        cast(Scan.id, String).ilike(pattern),
+                        Scan.target.ilike(pattern),
+                        Scan.scan_type.ilike(pattern),
+                        Scan.status.ilike(pattern),
+                        cast(Scan.created_at, String).ilike(pattern),
+                        cast(Scan.updated_at, String).ilike(pattern),
+                        cast(Scan.started_at, String).ilike(pattern),
+                        cast(Scan.completed_at, String).ilike(pattern),
+                        cast(Scan.parameters, String).ilike(pattern),
+                        cast(Scan.summary, String).ilike(pattern),
+                        host_hostname.ilike(pattern),
+                        cast(hosts_count, String).ilike(pattern),
+                        cast(ports_count, String).ilike(pattern),
+                        cast(services_count, String).ilike(pattern),
+                        cast(vulnerabilities_count, String).ilike(pattern),
+                        cast(cves_count, String).ilike(pattern),
+                        cast(exploits_count, String).ilike(pattern),
+                        cast(reports_count, String).ilike(pattern),
+                        progress_expr.ilike(pattern),
+                        cast(duration_seconds, String).ilike(pattern),
+                    ]
+                    if term.lower() == "today":
+                        search_conditions.append(
+                            Scan.created_at >= func.date_trunc("day", func.now())
+                        )
+                    query = query.where(or_(*search_conditions))
                 if target:
                     query = query.where(
                         Scan.target.ilike(f"%{target.strip()}%")
@@ -362,11 +471,11 @@ class AssessmentManager:
                         Scan.created_at < date_to + timedelta(days=1)
                     )
                 result = await session.execute(query)
-                results.extend(
-                    self._record_from_scan(row)
-                    for row in result.scalars()
-                    if str(row.id) not in self._assessments
-                )
+                for row in result.scalars():
+                    if str(row.id) in self._assessments:
+                        continue
+                    db_loaded_ids.add(str(row.id))
+                    results.append(self._record_from_scan(row))
         except Exception as exc:
             logger.error(
                 "Failed to load persisted assessments: {error}",
@@ -378,12 +487,46 @@ class AssessmentManager:
         if scan_type:
             results = [a for a in results if a.scan_type == scan_type]
         if search:
-            term = search.strip().lower()
-            results = [
-                a
-                for a in results
-                if term in a.name.lower() or term in a.target.lower()
-            ]
+            term = search.strip()
+            if term.lower() == "today":
+                today = datetime.now(timezone.utc).date()
+                results = [
+                    a
+                    for a in results
+                    if a.id in db_loaded_ids
+                    or any(
+                        dt is not None and dt.date() == today
+                        for dt in (
+                            a.created_at,
+                            a.updated_at,
+                            a.started_at,
+                            a.completed_at,
+                        )
+                    )
+                ]
+            else:
+                needle = term.lower()
+                results = [
+                    a
+                    for a in results
+                    if a.id in db_loaded_ids
+                    or any(
+                        needle in str(value).lower()
+                        for value in (
+                            a.id,
+                            a.name,
+                            a.scan_type,
+                            a.target,
+                            a.status.value,
+                            a.created_at,
+                            a.updated_at,
+                            a.started_at,
+                            a.completed_at,
+                            a.parameters,
+                        )
+                        if value is not None
+                    )
+                ]
         if target:
             term = target.strip().lower()
             results = [a for a in results if term in a.target.lower()]
@@ -460,7 +603,14 @@ class AssessmentManager:
     async def start_assessment(
         self, assessment_id: str
     ) -> AssessmentRecord:
-        record = self.get_assessment(assessment_id)
+        try:
+            record = self.get_assessment(assessment_id)
+        except AssessmentNotFoundError:
+            persisted = await self.get_assessment_status_persisted(assessment_id)
+            if persisted is None:
+                raise AssessmentNotFoundError(assessment_id)
+            record = self._hydrate_from_dict(persisted)
+            self._assessments[assessment_id] = record
 
         if record.status == AssessmentStatus.RUNNING:
             raise AssessmentAlreadyRunningError(assessment_id)

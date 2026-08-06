@@ -2,25 +2,33 @@ import asyncio
 import os
 import re
 import shutil
+import socket
 import struct
 import subprocess
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.models.packet import Conversation, Packet
 from app.models.packet_capture import PacketCapture
 from app.schemas.common import SuccessResponse
 from app.services.pcap_parser import PcapParseError, parse_capture_file
 
-router = APIRouter(prefix="/captures", tags=["Packet Captures"])
+router = APIRouter(
+    prefix="/captures",
+    tags=["Packet Captures"],
+    dependencies=[Depends(get_current_user)],
+)
 
 ACTIVE_CAPTURES: dict[str, dict] = {}
 
@@ -57,6 +65,16 @@ def _find_capture_tool() -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def _scapy_capture_available() -> bool:
+    """True when the Scapy package is importable (used as the capture backend
+    when no external capture tool is installed)."""
+    try:
+        import scapy.all as scapy  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _npcap_installed() -> bool:
     return any(
         Path(p).exists()
@@ -68,6 +86,143 @@ def _npcap_installed() -> bool:
     )
 
 
+def _psutil_interfaces() -> dict:
+    """Enumerate interfaces via psutil, keyed by friendly name.
+
+    Returns {name: {"ip_address", "mac_address", "status"}} where status is
+    "up"/"down". Falls back to {} when psutil is unavailable.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return {}
+    try:
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+    except Exception:
+        return {}
+    af_inet = getattr(socket, "AF_INET", None)
+    af_link = getattr(psutil, "AF_LINK", None)
+    result: dict = {}
+    for name, ifaddrs in addrs.items():
+        ip = mac = None
+        for a in ifaddrs:
+            if af_inet is not None and a.family == af_inet:
+                ip = a.address
+            elif af_link is not None and a.family == af_link:
+                mac = a.address
+        st = stats.get(name)
+        if ip in ("0.0.0.0", "", None):
+            ip = None
+        if mac in ("00:00:00:00:00:00", "", None):
+            mac = None
+        result[name] = {
+            "ip_address": ip,
+            "mac_address": mac,
+            "status": "up" if (st is not None and st.isup) else "down",
+        }
+    return result
+
+
+def _scapy_interfaces() -> dict:
+    """Enumerate interfaces via Scapy, keyed by capture device id.
+
+    On Windows the device ids are \\Device\\NPF_... names (identical to
+    `dumpcap -D` ids); on Linux they are lo/eth0 etc. Returns
+    {id: {"ip_address", "mac_address"}}, or {} when Scapy is unavailable.
+    """
+    try:
+        import scapy.all as scapy
+    except ImportError:
+        return {}
+    try:
+        devices = scapy.get_if_list()
+    except Exception:
+        return {}
+    result: dict = {}
+    for dev in devices:
+        ip = mac = None
+        try:
+            ip = scapy.get_if_addr(dev)
+        except Exception:
+            pass
+        try:
+            mac = scapy.get_if_hwaddr(dev)
+        except Exception:
+            pass
+        if ip in ("0.0.0.0", "", None):
+            ip = None
+        if mac in ("00:00:00:00:00:00", "", None):
+            mac = None
+        result[dev] = {"ip_address": ip, "mac_address": mac}
+    return result
+
+
+def _enrich_interfaces(items: list[dict], scapy_map: dict, psutil_map: dict) -> list[dict]:
+    """Attach ip_address/mac_address/status to interface descriptors.
+
+    Scapy metadata is matched by capture device id; psutil metadata is matched
+    by friendly name/description. Scapy IPs are preferred because they are
+    bound to the exact capture device.
+    """
+    for item in items:
+        meta = scapy_map.get(item["id"])
+        item["ip_address"] = meta.get("ip_address") if meta else None
+        item["mac_address"] = meta.get("mac_address") if meta else None
+        item["status"] = "unknown"
+        ps = psutil_map.get(item["description"]) or psutil_map.get(item["name"])
+        if ps:
+            item["ip_address"] = item["ip_address"] or ps.get("ip_address")
+            item["mac_address"] = item["mac_address"] or ps.get("mac_address")
+            item["status"] = ps.get("status") or item["status"]
+    return items
+
+
+def _list_interfaces_fallback() -> list[dict]:
+    """Enumerate interfaces without a capture tool using Scapy/psutil."""
+    scapy_map = _scapy_interfaces()
+    psutil_map = _psutil_interfaces()
+    by_ip: dict = {}
+    for name, ps in psutil_map.items():
+        if ps.get("ip_address"):
+            by_ip.setdefault(ps["ip_address"], name)
+    items: list[dict] = []
+    for dev, meta in scapy_map.items():
+        ps = psutil_map.get(dev)
+        friendly = dev
+        if ps:
+            friendly = dev
+        elif meta.get("ip_address") and meta["ip_address"] in by_ip:
+            friendly = by_ip[meta["ip_address"]]
+        ps = psutil_map.get(friendly)
+        items.append(
+            {
+                "id": dev,
+                "name": friendly,
+                "description": friendly,
+                "ip_address": meta.get("ip_address") or (ps or {}).get("ip_address"),
+                "mac_address": meta.get("mac_address") or (ps or {}).get("mac_address"),
+                "status": (ps or {}).get("status", "unknown"),
+            }
+        )
+    used = {i["id"] for i in items}
+    used.update(i["description"] for i in items)
+    for name, ps in psutil_map.items():
+        if name in used:
+            continue
+        items.append(
+            {
+                "id": name,
+                "name": name,
+                "description": name,
+                "ip_address": ps.get("ip_address"),
+                "mac_address": ps.get("mac_address"),
+                "status": ps.get("status", "unknown"),
+            }
+        )
+    return items
+
+
 def _no_capture_tool_message() -> str:
     if not _npcap_installed():
         return (
@@ -77,14 +232,16 @@ def _no_capture_tool_message() -> str:
             "Uploading a PCAP file still works."
         )
     return (
-        "Live capture requires dumpcap or tshark (Wireshark) on the server. Install Wireshark from "
-        "https://www.wireshark.org or set WIRESHARK_DIR to its install folder. "
+        "Live capture requires a capture tool (dumpcap or tshark from Wireshark, or tcpdump) or the "
+        "Python Scapy package on the server. Install Wireshark from https://www.wireshark.org, set "
+        "WIRESHARK_DIR to its install folder, or install the backend dependencies (scapy) and retry. "
         "Uploading a PCAP file still works."
     )
 
 
 def _list_interfaces(tool_path: str) -> list[dict]:
-    """Parse `dumpcap -D` / `tshark -D` output into interface descriptors."""
+    """Parse `dumpcap -D` / `tshark -D` output into interface descriptors,
+    enriched with ip_address/mac_address/status where available."""
     try:
         result = subprocess.run(
             [tool_path, "-D"], capture_output=True, text=True, timeout=20
@@ -108,7 +265,9 @@ def _list_interfaces(tool_path: str) -> list[dict]:
             name = m2.group(2).strip()
             description = ""
         items.append({"id": name, "name": name, "description": description})
-    return items
+    if not items:
+        return items
+    return _enrich_interfaces(items, _scapy_interfaces(), _psutil_interfaces())
 
 
 def _default_interface(tool_path: str) -> Optional[str]:
@@ -121,6 +280,103 @@ def _default_interface(tool_path: str) -> Optional[str]:
         if "loopback" in iface["id"].lower() or "loopback" in iface["description"].lower():
             return iface["id"]
     return interfaces[0]["id"]
+
+
+def _is_loopback_interface(item: dict) -> bool:
+    """True when an interface descriptor refers to a loopback adapter.
+
+    Handles both the Windows NPF_Loopback device id and the Linux `lo`
+    interface, and matches by loopback-assigned addresses as a fallback.
+    """
+    ident = (item.get("id") or "").lower()
+    name = (item.get("name") or "").lower()
+    desc = (item.get("description") or "").lower()
+    ip = item.get("ip_address") or ""
+    return (
+        "loopback" in ident
+        or "loopback" in name
+        or "loopback" in desc
+        or ident == "lo"
+        or name == "lo"
+        or ip in ("127.0.0.1", "::1")
+    )
+
+
+def _default_interface_scapy() -> Optional[str]:
+    """Pick a sensible default when capturing via Scapy.
+
+    Prefers the first non-loopback interface that is UP (e.g. `eth0` inside
+    Docker), then any other non-loopback interface, and only falls back to the
+    loopback adapter (lo / NPF_Loopback) when no other interface exists.
+    """
+    items = _list_interfaces_fallback()
+    if not items:
+        return None
+    usable = [i for i in items if not _is_loopback_interface(i)]
+    if usable:
+        for item in usable:
+            if item.get("status") == "up":
+                return item["id"]
+        return usable[0]["id"]
+    return items[0]["id"]
+
+
+def _scapy_capture_worker(
+    iface: str, dest_path: Path, filter_expr: Optional[str], state: dict
+) -> None:
+    """Capture with Scapy into a classic pcap file. Runs in a daemon thread.
+
+    Uses scapy.sniff() in short timed slices so the loop can exit promptly when
+    `state["stop"]` is set (stop_filter alone would block forever on a quiet
+    interface). Packets are appended to a PcapWriter with sync=True so the file
+    grows live and status polling can report the current byte size.
+    """
+    from scapy.all import PcapWriter, sniff
+
+    writer = None
+    try:
+        writer = PcapWriter(str(dest_path), linktype=1, sync=True)
+
+        def on_pkt(pkt):
+            try:
+                writer.write(pkt)
+                state["count"] = state.get("count", 0) + 1
+            except Exception as e:
+                state["error"] = f"Scapy packet write failed: {e}"
+                state["stop"] = True
+
+        while not state.get("stop"):
+            try:
+                sniff(
+                    iface=iface,
+                    prn=on_pkt,
+                    store=False,
+                    count=0,
+                    timeout=0.5,
+                    filter=filter_expr,
+                )
+            except Exception as e:
+                # A BPF filter may be unsupported on the local platform; retry
+                # without it before giving up.
+                if filter_expr and not state.get("filter_disabled"):
+                    logger.warning(
+                        "Scapy BPF filter unsupported on interface {iface}, retrying without filter: {error}",
+                        iface=iface,
+                        error=str(e),
+                    )
+                    state["filter_disabled"] = True
+                    filter_expr = None
+                    continue
+                state["error"] = str(e)
+                state["stop"] = True
+    except Exception as e:
+        state["error"] = f"Scapy capture failed to start: {e}"
+    finally:
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                pass
 
 
 def _count_pcap_packets(path: Path) -> int:
@@ -173,6 +429,7 @@ def _capture_to_dict(c) -> dict:
 @router.get("", response_model=SuccessResponse[list[dict]])
 async def list_captures(
     assessment_id: Optional[str] = Query(None, description="Filter by assessment UUID"),
+    search: Optional[str] = Query(None, description="Search captures by filename, status, or protocol"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -183,6 +440,20 @@ async def list_captures(
             query = query.where(PacketCapture.scan_id == uuid.UUID(assessment_id))
         except ValueError:
             return SuccessResponse(data=[], message="Invalid assessment_id format")
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.where(or_(
+            PacketCapture.filename.ilike(term),
+            cast(PacketCapture.packet_count, String).ilike(term),
+            cast(PacketCapture.file_size, String).ilike(term),
+            cast(PacketCapture.protocol_stats, String).ilike(term),
+            cast(PacketCapture.filter, String).ilike(term),
+            cast(PacketCapture.created_at, String).ilike(term),
+            func.to_char(PacketCapture.created_at, "Month").ilike(term),
+            func.to_char(PacketCapture.created_at, "YYYY").ilike(term),
+            cast(PacketCapture.capture_started_at, String).ilike(term),
+            cast(PacketCapture.capture_ended_at, String).ilike(term),
+        ))
     query = query.order_by(PacketCapture.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
     result = await db.execute(query)
     captures = result.scalars().all()
@@ -226,19 +497,28 @@ async def get_protocol_stats(
 
 @router.get("/interfaces", response_model=SuccessResponse[list[dict]])
 async def list_capture_interfaces():
-    """List capture interfaces available on the server (dumpcap -D / tshark -D)."""
+    """List capture interfaces available on the server.
+
+    Uses `dumpcap -D` / `tshark -D` when a capture tool is present, otherwise
+    falls back to system-level enumeration (Scapy/psutil).
+    """
     tool, _ = _find_capture_tool()
-    if not tool:
-        return SuccessResponse(data=[], message=_no_capture_tool_message())
-    items = _list_interfaces(tool)
-    if not items:
-        if not _npcap_installed():
-            return SuccessResponse(data=[], message=_no_capture_tool_message())
+    if tool:
+        items = _list_interfaces(tool)
+        if items:
+            return SuccessResponse(data=items, message=f"Found {len(items)} interfaces")
+    items = _list_interfaces_fallback()
+    if items:
         return SuccessResponse(
-            data=[],
-            message="No capture interfaces found. Make sure the Npcap driver is installed and running.",
+            data=items,
+            message=f"Found {len(items)} interfaces (system enumeration)",
         )
-    return SuccessResponse(data=items, message=f"Found {len(items)} interfaces")
+    if not _npcap_installed():
+        return SuccessResponse(data=[], message=_no_capture_tool_message())
+    return SuccessResponse(
+        data=[],
+        message="No capture interfaces found. Make sure the Npcap driver is installed and running.",
+    )
 
 
 @router.get("/{capture_id}", response_model=SuccessResponse[dict])
@@ -266,6 +546,111 @@ async def get_capture(capture_id: str, db: AsyncSession = Depends(get_db)):
     data["started_at"] = capture.capture_started_at.isoformat() if capture.capture_started_at else None
     data["ended_at"] = capture.capture_ended_at.isoformat() if capture.capture_ended_at else None
     return SuccessResponse(data=data, message="Capture retrieved")
+
+
+@router.get("/{capture_id}/download")
+async def download_capture(capture_id: str, db: AsyncSession = Depends(get_db)):
+    """Stream the stored PCAP file for a capture as an attachment download.
+
+    Returns 404 when the capture does not exist or its file is missing.
+    Authentication is enforced by the router-level ``get_current_user``
+    dependency (same as all other capture endpoints).
+    """
+    try:
+        uid = uuid.UUID(capture_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Capture not found")
+
+    result = await db.execute(select(PacketCapture).where(PacketCapture.id == uid))
+    capture = result.scalar_one_or_none()
+    if capture is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+
+    filepath = Path(capture.filepath)
+    if not filepath.is_file() or filepath.stat().st_size <= 0:
+        logger.info(
+            "Capture download requested but file is missing: {id} ({path})",
+            id=capture_id,
+            path=capture.filepath,
+        )
+        raise HTTPException(status_code=404, detail="Capture file not found")
+
+    return FileResponse(
+        path=str(filepath),
+        media_type="application/vnd.tcpdump.pcap",
+        filename=capture.filename or f"live_{capture.id}.pcap",
+    )
+
+
+@router.delete("/{capture_id}", response_model=SuccessResponse[dict])
+async def delete_capture(
+    capture_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: object = Depends(get_current_user),
+):
+    """Delete a capture and all associated packets, conversations, and PCAP file.
+
+    Only administrators may delete captures.
+    """
+    from app.models.user import User as UserModel
+
+    user: UserModel = current_user  # type: ignore[assignment]
+    if user.role != "administrator":
+        raise HTTPException(status_code=403, detail="Only administrators can delete captures")
+
+    try:
+        uid = uuid.UUID(capture_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid capture ID format")
+
+    result = await db.execute(select(PacketCapture).where(PacketCapture.id == uid))
+    capture = result.scalar_one_or_none()
+    if not capture:
+        raise HTTPException(status_code=404, detail="Capture not found")
+
+    packet_result = await db.execute(
+        select(Packet.id).where(Packet.capture_id == uid)
+    )
+    packet_ids = [row[0] for row in packet_result.all()]
+    if packet_ids:
+        await db.execute(
+            Packet.__table__.delete().where(Packet.capture_id == uid)
+        )
+
+    conv_result = await db.execute(
+        select(Conversation.id).where(Conversation.capture_id == uid)
+    )
+    conv_ids = [row[0] for row in conv_result.all()]
+    if conv_ids:
+        await db.execute(
+            Conversation.__table__.delete().where(Conversation.capture_id == uid)
+        )
+
+    filepath = Path(capture.filepath)
+    file_removed = False
+    if filepath.is_file():
+        try:
+            filepath.unlink()
+            file_removed = True
+            logger.info("Capture file removed: {path}", path=filepath)
+        except OSError as exc:
+            logger.error("Failed to remove capture file {path}: {err}", path=filepath, err=exc)
+
+    await db.execute(
+        PacketCapture.__table__.delete().where(PacketCapture.id == uid)
+    )
+    await db.commit()
+
+    logger.info(
+        "Capture deleted: {id} by {user} (file_removed={file_removed})",
+        id=capture_id,
+        user=current_user.username,
+        file_removed=file_removed,
+    )
+    return SuccessResponse(
+        data={"id": capture_id, "packets_deleted": len(packet_ids), "conversations_deleted": len(conv_ids)},
+        message="Capture deleted successfully",
+    )
 
 
 @router.get("/{capture_id}/packets", response_model=SuccessResponse[dict])
@@ -501,6 +886,21 @@ async def _store_conversations(
         )
 
 
+def _capture_active(info: Optional[dict]) -> bool:
+    """True when a capture entry is still running, whether backed by an
+    external capture tool process or a Scapy capture thread."""
+    if not info:
+        return False
+    proc = info.get("process")
+    if proc is not None and proc.returncode is None:
+        return True
+    state = info.get("state")
+    thread = info.get("thread")
+    if state is not None and thread is not None:
+        return (not state.get("stop")) and thread.is_alive()
+    return False
+
+
 @router.get("/{capture_id}/status", response_model=SuccessResponse[dict])
 async def get_capture_status(capture_id: str, db: AsyncSession = Depends(get_db)):
     """Live status for an active capture: current packet count, bytes and duration."""
@@ -515,8 +915,7 @@ async def get_capture_status(capture_id: str, db: AsyncSession = Depends(get_db)
         return SuccessResponse(data={}, message="Capture not found")
 
     info = ACTIVE_CAPTURES.get(capture_id)
-    process = info.get("process") if info else None
-    running = process is not None and process.returncode is None
+    running = _capture_active(info)
 
     started_at = capture.capture_started_at or (info.get("started_at") if info else None)
     duration = 0.0
@@ -527,7 +926,10 @@ async def get_capture_status(capture_id: str, db: AsyncSession = Depends(get_db)
 
     filepath = Path(capture.filepath)
     bytes_written = filepath.stat().st_size if filepath.exists() else 0
-    packets = _count_pcap_packets(filepath) if bytes_written > 0 else 0
+    if info and info.get("kind") == "scapy":
+        packets = (info.get("state") or {}).get("count") or 0
+    else:
+        packets = _count_pcap_packets(filepath) if bytes_written > 0 else 0
 
     if running:
         return SuccessResponse(
@@ -566,27 +968,36 @@ async def start_capture(
     # --- 1. Prevent multiple simultaneous captures ---
     for cid in list(ACTIVE_CAPTURES.keys()):
         info = ACTIVE_CAPTURES.get(cid)
-        proc = info.get("process") if info else None
-        if proc is not None and proc.returncode is None:
+        if _capture_active(info):
             return SuccessResponse(
                 data={},
                 message="Another live capture is already in progress - stop it before starting a new one",
             )
         ACTIVE_CAPTURES.pop(cid, None)
 
-    # --- 2. Tool and driver detection ---
+    # --- 2. Capture backend detection ---
+    # Preferred: an external capture tool (dumpcap/tshark/tcpdump). When none is
+    # installed, fall back to the Scapy backend, which writes a classic pcap
+    # file that the existing parser and storage pipeline handle unchanged.
     tool, kind = _find_capture_tool()
     if not tool:
-        return SuccessResponse(data={}, message=_no_capture_tool_message())
-    if not _npcap_installed():
-        return SuccessResponse(
-            data={},
-            message="The Npcap driver is not installed - install Npcap (https://npcap.com) to enable live capture. Uploading a PCAP file still works.",
-        )
+        if not _scapy_capture_available():
+            return SuccessResponse(data={}, message=_no_capture_tool_message())
+        backend = "scapy"
+    else:
+        backend = kind
+        if not _npcap_installed():
+            return SuccessResponse(
+                data={},
+                message="The Npcap driver is not installed - install Npcap (https://npcap.com) to enable live capture. Uploading a PCAP file still works.",
+            )
 
     # --- 3. Resolve interface ---
     if interface in ("", "any", "auto"):
-        iface = _default_interface(tool)
+        if backend == "scapy":
+            iface = _default_interface_scapy()
+        else:
+            iface = _default_interface(tool)
         if iface is None:
             return SuccessResponse(
                 data={},
@@ -601,51 +1012,91 @@ async def start_capture(
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / f"live_{capture_id}.pcap"
 
-    # --- 5. Tool-specific arguments ---
-    if kind == "dumpcap":
-        # -F pcap writes classic pcap (each record written incrementally, so a
-        # hard kill still leaves a parseable file). Note: modern dumpcap emits
-        # nanosecond-pcap magics; the parser accepts both micro/nano variants.
-        args = ["-F", "pcap", "-i", iface, "-w", str(dest_path)]
-        if filter_expr:
-            args += ["-f", filter_expr]
-    elif kind == "tshark":
-        args = ["-i", iface, "-w", str(dest_path), "-F", "pcap"]
-        if filter_expr:
-            args += ["-f", filter_expr]
-    else:  # tcpdump
-        args = ["-i", iface, "-w", str(dest_path)]
-        if filter_expr:
-            args.append(filter_expr)
+    # --- 5/6. Spawn the capture backend ---
+    state = None
+    thread = None
+    process = None
+    if backend == "scapy":
+        # Scapy backend: run the capture loop in a daemon thread. No subprocess
+        # is involved; the worker writes packets to the pcap file incrementally.
+        state = {"stop": False, "count": 0, "error": None, "filter_disabled": False}
+        thread = threading.Thread(
+            target=_scapy_capture_worker,
+            args=(iface, dest_path, filter_expr, state),
+            daemon=True,
+            name=f"scapy-capture-{capture_id}",
+        )
+        thread.start()
+        logger.info(
+            "Live capture (scapy backend) started on interface {iface} (requested={requested}, selected={selected}, backend={backend}, dest={dest})",
+            iface=iface,
+            requested=interface,
+            selected=iface,
+            backend=backend,
+            dest=dest_path,
+        )
+    else:
+        # Tool-specific arguments
+        if kind == "dumpcap":
+            # -F pcap writes classic pcap (each record written incrementally, so a
+            # hard kill still leaves a parseable file). Note: modern dumpcap emits
+            # nanosecond-pcap magics; the parser accepts both micro/nano variants.
+            args = ["-F", "pcap", "-i", iface, "-w", str(dest_path)]
+            if filter_expr:
+                args += ["-f", filter_expr]
+        elif kind == "tshark":
+            args = ["-i", iface, "-w", str(dest_path), "-F", "pcap"]
+            if filter_expr:
+                args += ["-f", filter_expr]
+        else:  # tcpdump
+            args = ["-i", iface, "-w", str(dest_path)]
+            if filter_expr:
+                args.append(filter_expr)
 
-    # --- 6. Spawn the capture process ---
-    # subprocess.Popen (not asyncio.create_subprocess_exec): with `--reload`,
-    # uvicorn 0.52 runs on a SelectorEventLoop on Windows, where asyncio
-    # subprocess support raises NotImplementedError. Popen via to_thread works
-    # on any event loop and also allows CREATE_NO_WINDOW (no console popups).
-    logger.info(
-        "Live capture command: {cmd} (interface={iface}, dest={dest})",
-        cmd=" ".join([tool] + args),
-        iface=iface,
-        dest=dest_path,
-    )
-    try:
-        popen_kwargs = dict(stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        process = await asyncio.to_thread(
-            subprocess.Popen, [tool, *args], **popen_kwargs
+        # subprocess.Popen (not asyncio.create_subprocess_exec): with `--reload`,
+        # uvicorn 0.52 runs on a SelectorEventLoop on Windows, where asyncio
+        # subprocess support raises NotImplementedError. Popen via to_thread works
+        # on any event loop and also allows CREATE_NO_WINDOW (no console popups).
+        logger.info(
+            "Live capture command: {cmd} (requested={requested}, selected={selected}, backend={backend}, dest={dest})",
+            cmd=" ".join([tool] + args),
+            requested=interface,
+            selected=iface,
+            backend=backend,
+            dest=dest_path,
         )
-    except Exception as e:
-        logger.error("Failed to spawn capture tool {tool}: {error}", tool=tool, error=str(e))
-        return SuccessResponse(
-            data={},
-            message=f"Failed to start live capture: {e}",
-        )
+        try:
+            popen_kwargs = dict(stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            process = await asyncio.to_thread(
+                subprocess.Popen, [tool, *args], **popen_kwargs
+            )
+        except Exception as e:
+            logger.error("Failed to spawn capture tool {tool}: {error}", tool=tool, error=str(e))
+            return SuccessResponse(
+                data={},
+                message=f"Failed to start live capture: {e}",
+            )
 
     # --- 7. Early failure detection (bad interface, permission errors, ...) ---
     await asyncio.sleep(2.5)
-    if process.poll() is not None:
+    if backend == "scapy":
+        if state.get("error"):
+            dest_path.unlink(missing_ok=True)
+            logger.warning(
+                "Scapy capture failed on interface {iface}: {error}",
+                iface=iface,
+                error=state["error"],
+            )
+            return SuccessResponse(
+                data={},
+                message=(
+                    f"Live capture failed to start on interface '{iface}': {state['error']} "
+                    "- check that the interface exists and that the backend can capture on it"
+                ),
+            )
+    elif process.poll() is not None:
         error_text = ""
         if process.stderr:
             try:
@@ -693,24 +1144,27 @@ async def start_capture(
 
     ACTIVE_CAPTURES[capture_id] = {
         "process": process,
+        "thread": thread,
+        "state": state,
+        "kind": backend,
         "started_at": capture.capture_started_at,
         "interface": iface,
-        "tool": tool,
+        "tool": tool or "scapy",
     }
     logger.info(
         "Live capture started: {id} on interface {iface} with {tool}",
         id=capture_id,
         iface=iface,
-        tool=tool,
+        tool=tool or "scapy",
     )
     return SuccessResponse(
         data={
             "id": capture_id,
             "interface": iface,
             "filename": capture.filename,
-            "tool": tool,
+            "tool": tool or "scapy",
         },
-        message=f"Live capture started on '{iface}' ({tool})",
+        message=f"Live capture started on '{iface}' ({tool or 'scapy'})",
     )
 
 
@@ -729,9 +1183,11 @@ async def stop_capture(
     if not capture:
         return SuccessResponse(data={}, message="Capture not found")
 
-    # --- 1. Stop the capture process cleanly ---
+    # --- 1. Stop the capture cleanly ---
     info = ACTIVE_CAPTURES.pop(capture_id, None)
     process = info.get("process") if info else None
+    state = info.get("state") if info else None
+    thread = info.get("thread") if info else None
     stop_error = ""
     if process is not None and process.poll() is None:
         try:
@@ -754,6 +1210,14 @@ async def stop_capture(
                 stop_error += " " + tail.decode(errors="replace").strip()
             except Exception:
                 pass
+    elif thread is not None and thread.is_alive():
+        # Scapy backend: signal the sniff loop and wait for it to finish and
+        # close the pcap writer so the file is complete and parseable.
+        state["stop"] = True
+        try:
+            await asyncio.wait_for(asyncio.to_thread(thread.join), timeout=8)
+        except asyncio.TimeoutError:
+            stop_error = " (Scapy capture thread did not exit cleanly)"
 
     # --- 2. Parse the captured file ---
     filepath = Path(capture.filepath)

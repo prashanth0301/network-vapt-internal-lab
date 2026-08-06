@@ -1,11 +1,12 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.schemas.common import SuccessResponse
 from app.schemas.port import PortResponse, PortScanRequest, ServiceResponse
 from app.services.assessment import assessment_manager
@@ -16,7 +17,11 @@ from app.services.port_scan_service import (
     get_ports_by_host,
 )
 
-router = APIRouter(prefix="/ports", tags=["Ports"])
+router = APIRouter(
+    prefix="/ports",
+    tags=["Ports"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=SuccessResponse[list[PortResponse]])
@@ -43,7 +48,7 @@ async def get_port(
 ):
     port = await get_port_by_id(db, port_id)
     if not port:
-        return SuccessResponse(data=None, message=f"Port '{port_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Port '{port_id}' not found")
     return SuccessResponse(data=_port_to_response(port), message="Port retrieved")
 
 

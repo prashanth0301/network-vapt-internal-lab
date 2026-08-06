@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
 import { ReportList } from '../components/assessment/ReportList';
 import { SeverityChips } from '../components/assessment/SeverityChips';
 import { SeveritySummary } from '../components/assessment/SeveritySummary';
@@ -27,6 +28,7 @@ import {
   deleteAssessment,
   getAssessments,
   getAssessmentSummary,
+  startAssessment,
 } from '../services/assessmentService';
 import apiClient from '../services/api';
 import { getApiError } from '../services/api';
@@ -35,7 +37,7 @@ import { downloadReport, generateReport, getReports, type Report } from '../serv
 
 const SCAN_TYPE_OPTIONS = ['', 'full_assessment', 'host_discovery', 'port_scan', 'service_enum', 'vuln_scan'];
 
-const STATUS_OPTIONS = ['', 'completed', 'failed', 'running', 'pending', 'cancelled'];
+const STATUS_OPTIONS = ['', 'draft', 'completed', 'failed', 'running', 'pending', 'cancelled'];
 
 const DELETE_PRESETS = [
   { value: 'last_15m', label: 'Last 15 Minutes' },
@@ -55,6 +57,8 @@ type Tab = 'overview' | 'progress' | 'reports' | 'artifacts';
 export function History() {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { hasRole } = useContext(AuthContext);
+  const isAdmin = hasRole('administrator');
 
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +76,7 @@ export function History() {
   const [deleteTarget, setDeleteTarget] = useState<Assessment | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [cloningId, setCloningId] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
 
   const [detailAssessment, setDetailAssessment] = useState<AssessmentSummary | null>(null);
   const [detailTab, setDetailTab] = useState<Tab>('overview');
@@ -139,7 +144,15 @@ export function History() {
   }, [hasActive, fetchAssessments]);
 
   const handleRestore = (assessment: Assessment) => {
-    setActiveAssessment(assessment.id, assessment.name);
+    if (assessment.status === 'draft') {
+      addToast({
+        type: 'warning',
+        title: 'Draft assessment',
+        message: `"${assessment.name}" has no scan data. Start the assessment first to generate results.`,
+      });
+      return;
+    }
+    setActiveAssessment(assessment.id, assessment.name, assessment.status);
     navigate('/');
   };
 
@@ -153,6 +166,20 @@ export function History() {
       addToast({ type: 'error', title: 'Clone failed', message: getApiError(e) });
     } finally {
       setCloningId(null);
+    }
+  };
+
+  const handleStartDraft = async (assessment: Assessment) => {
+    setStartingId(assessment.id);
+    try {
+      await startAssessment(assessment.id);
+      addToast({ type: 'success', title: 'Assessment started', message: `"${assessment.name}" is now running.` });
+      setActiveAssessment(assessment.id, assessment.name, 'running');
+      navigate('/scanning');
+    } catch (e) {
+      addToast({ type: 'error', title: 'Start failed', message: getApiError(e) });
+    } finally {
+      setStartingId(null);
     }
   };
 
@@ -468,12 +495,24 @@ export function History() {
                             <>
                               <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                               <div className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-xl py-1">
-                                <MenuButton onClick={() => { setOpenMenuId(null); handleViewDetails(a, 'reports'); }}>
-                                  📄 Download Report
-                                </MenuButton>
-                                <MenuButton onClick={() => { setOpenMenuId(null); handleRestore(a); }}>
-                                  ▶ Restore Assessment
-                                </MenuButton>
+                                {a.status === 'draft' && (
+                                  <MenuButton
+                                    onClick={() => { setOpenMenuId(null); handleStartDraft(a); }}
+                                    disabled={startingId === a.id}
+                                  >
+                                    {startingId === a.id ? 'Starting...' : '▶ Start Assessment'}
+                                  </MenuButton>
+                                )}
+                                {a.status !== 'draft' && (
+                                  <MenuButton onClick={() => { setOpenMenuId(null); handleViewDetails(a, 'reports'); }}>
+                                    📄 Download Report
+                                  </MenuButton>
+                                )}
+                                {a.status !== 'draft' && (
+                                  <MenuButton onClick={() => { setOpenMenuId(null); handleRestore(a); }}>
+                                    ▶ Restore Assessment
+                                  </MenuButton>
+                                )}
                                 <MenuButton
                                   onClick={() => { setOpenMenuId(null); handleClone(a); }}
                                   disabled={cloningId === a.id}
@@ -504,34 +543,36 @@ export function History() {
         </Card>
       )}
 
-      <Card title="Delete History">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium text-surface-500 mb-1">Preset</label>
-            <select value={deletePreset} onChange={(e) => setDeletePreset(e.target.value)} className="input w-full text-sm">
-              <option value="">Select time range...</option>
-              {DELETE_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
+      {isAdmin && (
+        <Card title="Delete History">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-medium text-surface-500 mb-1">Preset</label>
+              <select value={deletePreset} onChange={(e) => setDeletePreset(e.target.value)} className="input w-full text-sm">
+                <option value="">Select time range...</option>
+                {DELETE_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            {deletePreset === 'custom' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-surface-500 mb-1">From</label>
+                  <input type="date" value={deleteFrom} onChange={(e) => setDeleteFrom(e.target.value)} className="input w-full text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-surface-500 mb-1">To</label>
+                  <input type="date" value={deleteTo} onChange={(e) => setDeleteTo(e.target.value)} className="input w-full text-sm" />
+                </div>
+              </>
+            )}
+            <Button variant="danger" disabled={!deletePreset || (deletePreset === 'custom' && (!deleteFrom || !deleteTo))} onClick={() => setShowDeleteConfirm(true)}>
+              Delete
+            </Button>
           </div>
-          {deletePreset === 'custom' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">From</label>
-                <input type="date" value={deleteFrom} onChange={(e) => setDeleteFrom(e.target.value)} className="input w-full text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">To</label>
-                <input type="date" value={deleteTo} onChange={(e) => setDeleteTo(e.target.value)} className="input w-full text-sm" />
-              </div>
-            </>
-          )}
-          <Button variant="danger" disabled={!deletePreset || (deletePreset === 'custom' && (!deleteFrom || !deleteTo))} onClick={() => setShowDeleteConfirm(true)}>
-            Delete
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -567,9 +608,15 @@ export function History() {
                 <p className="text-sm text-surface-400 mt-0.5 font-mono">{detailAssessment.target}</p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => handleRestore({ id: detailAssessment.id, name: detailAssessment.name } as Assessment)}>
-                  Restore
-                </Button>
+                {detailAssessment.status === 'draft' ? (
+                  <Button variant="primary" size="sm" onClick={() => { closeDetailsModal(); handleStartDraft({ id: detailAssessment.id, name: detailAssessment.name, status: detailAssessment.status } as Assessment); }}>
+                    Start Assessment
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => handleRestore({ id: detailAssessment.id, name: detailAssessment.name, status: detailAssessment.status } as Assessment)}>
+                    Restore
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={closeDetailsModal}>Close</Button>
               </div>
             </div>

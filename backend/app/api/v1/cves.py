@@ -1,14 +1,19 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db
+from app.services.auth import get_current_user
 from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.cve import CVEResponse, CVEStatisticsResponse
 
-router = APIRouter(prefix="/cves", tags=["CVEs"])
+router = APIRouter(
+    prefix="/cves",
+    tags=["CVEs"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=PaginatedResponse[CVEResponse])
@@ -107,7 +112,7 @@ async def get_cve(
 
     cve = await get_cve_by_id(db, cve_id)
     if not cve:
-        return SuccessResponse(data=None, message=f"CVE '{cve_id}' not found")
+        raise HTTPException(status_code=404, detail=f"CVE '{cve_id}' not found")
     return SuccessResponse(data=_cve_to_response(cve), message="CVE retrieved")
 
 

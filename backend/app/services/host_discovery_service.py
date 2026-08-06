@@ -1,19 +1,47 @@
 import asyncio
+import ipaddress
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import cast, exists, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session_factory
 from app.models.host import Host
+from app.models.port import Port
+from app.models.scan import Scan
+from app.models.service import Service
+from app.models.vulnerability import Vulnerability
 from app.services.assessment.lifecycle import StageStatus
 from app.services.assessment.progress_tracker import ProgressTracker
 from app.services.artifact_manager import artifact_manager
 from app.services.host_enrichment import enrich_hosts
 from app.services.nmap_service import NmapHostResult, run_scan
+
+
+def _is_invalid_discovery_address(ip: str, target: str) -> bool:
+    """Broadcast, multicast, network and unspecified addresses are never hosts."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return True
+    if (
+        addr.is_multicast
+        or addr.is_unspecified
+        or addr.is_loopback
+        or str(addr) == "255.255.255.255"
+    ):
+        return True
+    try:
+        if "/" in target:
+            network = ipaddress.ip_network(target.strip(), strict=False)
+            if addr == network.broadcast_address or addr == network.network_address:
+                return True
+    except ValueError:
+        pass
+    return False
 
 
 async def host_discovery_handler(
@@ -112,6 +140,12 @@ async def host_discovery_handler(
 
     if tracker:
         tracker.update_stage_progress("host_discovery", 60.0)
+
+    result.hosts = [
+        h
+        for h in result.hosts
+        if not _is_invalid_discovery_address(h.ip_address, target)
+    ]
 
     if result.hosts:
         result.hosts = await asyncio.to_thread(enrich_hosts, result.hosts)
@@ -276,6 +310,7 @@ async def get_all_hosts(
     status: Optional[str] = None,
     alive_only: bool = False,
     assessment_id: Optional[str] = None,
+    search: Optional[str] = None,
 ) -> tuple[list[Host], int]:
     query = select(Host)
     count_query = select(Host.id).select_from(Host)
@@ -294,6 +329,60 @@ async def get_all_hosts(
     if alive_only:
         query = query.where(Host.is_alive == True)
         count_query = count_query.where(Host.is_alive == True)
+
+    if search:
+        term = f"%{search.strip()}%"
+        open_ports_count = (
+            select(func.count(Port.id))
+            .where(Port.host_id == Host.id, Port.state == "open")
+            .scalar_subquery()
+        )
+        services_count = (
+            select(func.count(Service.id))
+            .join(Port, Service.port_id == Port.id)
+            .where(Port.host_id == Host.id)
+            .scalar_subquery()
+        )
+        vulnerabilities_count = (
+            select(func.count(Vulnerability.id))
+            .where(Vulnerability.host_id == Host.id)
+            .scalar_subquery()
+        )
+        service_match = (
+            select(Service.id)
+            .join(Port, Service.port_id == Port.id)
+            .where(
+                Port.host_id == Host.id,
+                or_(
+                    Service.name.ilike(term),
+                    Service.product.ilike(term),
+                    Service.version.ilike(term),
+                    Service.normalized_name.ilike(term),
+                    Service.normalized_product.ilike(term),
+                    Service.normalized_version.ilike(term),
+                ),
+            )
+            .exists()
+        )
+        search_filter = or_(
+            cast(Host.ip_address, String).ilike(term),
+            Host.hostname.ilike(term),
+            Host.os_name.ilike(term),
+            Host.os_version.ilike(term),
+            Host.vendor.ilike(term),
+            cast(Host.mac_address, String).ilike(term),
+            Host.status.ilike(term),
+            cast(Host.latency, String).ilike(term),
+            cast(Host.os_accuracy, String).ilike(term),
+            cast(Host.scan_id, String).ilike(term),
+            exists().where(Scan.id == Host.scan_id, Scan.name.ilike(term)),
+            service_match,
+            cast(open_ports_count, String).ilike(term),
+            cast(services_count, String).ilike(term),
+            cast(vulnerabilities_count, String).ilike(term),
+        )
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
 
     total_result = await session.execute(count_query)
     total = len(total_result.fetchall())

@@ -23,7 +23,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { AuthContext } from '../context/AuthContext';
 import { getApiError } from '../services/api';
 import { getDashboardSummary } from '../services/dashboardService';
-import { getActiveAssessmentId, useAssessmentChangeTick } from '../services/assessmentStore';
+import { getActiveAssessmentId, getActiveAssessmentName, getActiveAssessmentStatus, useAssessmentChangeTick } from '../services/assessmentStore';
 import type { DashboardSummary, PortSlice, ServiceSlice } from '../types/dashboard';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -110,6 +110,9 @@ export function Dashboard() {
   }
 
   const data = summary ?? emptySummary();
+  const activeStatus = getActiveAssessmentStatus();
+  const activeName = getActiveAssessmentName();
+  const isDraft = activeStatus === 'draft';
 
   return (
     <div className="space-y-6">
@@ -132,6 +135,15 @@ export function Dashboard() {
         <div className="p-4 rounded-lg border border-critical/20 bg-critical/10 text-critical text-sm">
           Failed to load dashboard: {error}
           <button className="ml-3 underline" onClick={fetchSummary}>Retry</button>
+        </div>
+      )}
+
+      {isDraft && getActiveAssessmentId() && (
+        <div className="p-4 rounded-lg border border-medium/30 bg-medium/10 text-surface-800 dark:text-surface-200 text-sm">
+          <span className="font-semibold">Draft Assessment:</span>{' '}
+          "{activeName}" has no scan data yet. Go to{' '}
+          <a href="/scanning" className="underline font-medium text-primary-600 dark:text-primary-400">Scanning</a>{' '}
+          to start this assessment, or select a completed assessment from the header dropdown.
         </div>
       )}
 

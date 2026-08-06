@@ -33,7 +33,7 @@ export interface Assessment {
   name: string;
   scan_type: string;
   target: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'draft' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   parameters: Record<string, unknown>;
   created_at: string;
   updated_at: string;

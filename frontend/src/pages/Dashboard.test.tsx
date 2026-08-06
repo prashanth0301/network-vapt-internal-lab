@@ -12,6 +12,8 @@ vi.mock('../services/dashboardService');
 vi.mock('../services/assessmentStore', () => ({
   useAssessmentChangeTick: () => 0,
   getActiveAssessmentId: () => null,
+  getActiveAssessmentName: () => null,
+  getActiveAssessmentStatus: () => null,
 }));
 
 const mockedGetDashboardSummary = vi.mocked(getDashboardSummary);
